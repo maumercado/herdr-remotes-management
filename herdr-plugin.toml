@@ -9,18 +9,9 @@ min_herdr_version = "0.9.5"
 description = "Add, edit, rename and delete SSH machines once for ~/.ssh/config, the herdr TUI and the Herdr app"
 platforms = ["linux", "macos"]
 
-# Install fails here when Node 22.18+, ssh, herdr or hc is missing.
+# Install fails here when Node 22.18+, ssh or herdr is missing (hc is optional).
 [[build]]
 command = ["sh", "bin/run", "check"]
-
-# Links ~/.config/herdr-app/mods/herdr-machines to this plugin's app-mod folder.
-[[build]]
-command = ["sh", "bin/install-app-mod"]
-
-# Same at each herdr start, so a linked plugin gets the app mod too
-# (`herdr plugin link` runs no build steps). Exits at once when nothing changed.
-[[startup]]
-command = ["sh", "bin/install-app-mod"]
 
 # The manager itself: a popup running the CLI's terminal UI.
 [[panes]]

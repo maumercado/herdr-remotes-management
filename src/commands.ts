@@ -509,25 +509,26 @@ export const MIN_NODE: [number, number] = [22, 18];
 
 /**
  * Checks the requirements: Node 22.18 or newer (the one running this),
- * OpenSSH's ssh, herdr and hc. The herdr plugin runs this as its build step,
- * so a missing requirement stops `herdr plugin install`.
+ * OpenSSH's ssh and herdr. hc is optional: with it, every change also reaches
+ * the Herdr app. The herdr plugin runs this as its build step, so a missing
+ * requirement stops `herdr plugin install`.
  */
 export async function check(ctx: Ctx): Promise<CommandResult> {
   const [major, minor] = process.versions.node.split(".").map(Number) as [number, number];
   const nodeOk = major > MIN_NODE[0] || (major === MIN_NODE[0] && minor >= MIN_NODE[1]);
   const items = [
-    { name: "node", found: process.execPath, ok: nodeOk, need: `Node ${MIN_NODE.join(".")} or newer (running ${process.versions.node})` },
+    { name: "node", found: process.execPath as string | undefined, ok: nodeOk, required: true, need: `Node ${MIN_NODE.join(".")} or newer (running ${process.versions.node})` },
     ...([
-      ["ssh", ctx.bins.ssh, "the OpenSSH client"],
-      ["herdr", ctx.bins.herdr, "the herdr TUI (https://herdr.dev)"],
-      ["hc", ctx.bins.hc, "herdr-core's hc, which comes with the Herdr app"],
-    ] as const).map(([name, bin, need]) => {
+      ["ssh", ctx.bins.ssh, true, "the OpenSSH client"],
+      ["herdr", ctx.bins.herdr, true, "the herdr TUI (https://herdr.dev)"],
+      ["hc", ctx.bins.hc, false, "herdr-core's hc (comes with the Herdr app); without it the APP column is skipped"],
+    ] as const).map(([name, bin, required, need]) => {
       const found = findExecutable(bin);
-      return { name, found, ok: Boolean(found), need };
+      return { name, found, ok: Boolean(found), required, need };
     }),
   ];
-  const missing = items.filter((i) => !i.ok);
-  const lines = items.map((i) => `  ${i.ok ? "✓" : "✕"} ${i.name.padEnd(5)} ${i.ok ? i.found : `missing: ${i.need}`}`);
+  const missing = items.filter((i) => !i.ok && i.required);
+  const lines = items.map((i) => `  ${i.ok ? "✓" : i.required ? "✕" : "○"} ${i.name.padEnd(5)} ${i.ok ? i.found : `${i.required ? "missing" : "optional, not found"}: ${i.need}`}`);
   lines.push(missing.length === 0 ? "All requirements found." : `Missing ${missing.map((i) => i.name).join(", ")}. Install them and try again.`);
   return {
     code: missing.length === 0 ? EXIT.ok : EXIT.failed,

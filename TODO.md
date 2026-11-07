@@ -44,7 +44,7 @@ Rules:
 - [x] `rename --label`, `rename --hc-name`, `rename --alias` (session kept)
 - [x] `delete [--yes] [--ssh=keep|delete]`
 - [x] `doctor [--json]` with one fix per row
-- [x] `check` (requirements: Node 22.18+, `ssh`, `herdr`, `hc`) and `help`
+- [x] `check` (requirements: Node 22.18+, `ssh`, `herdr`; `hc` optional) and `help`
 - [x] Fake `herdr`, `hc` and `ssh` for tests
 - [x] Unit tests: parser, writer, Include placement, symlinks, repo check, validation, merge, step runner, flags
 - [x] Command tests against the fakes
@@ -63,22 +63,16 @@ Rules:
 - [x] `login <alias>` command in the CLI for the `l` key (herdr reconnect, hc login)
 - [x] README: link the plugin, example key binding
 
-## 3. App mod (Herdr app)
+## 3. App mod (moved out of this repo)
 
-- [x] Read the mod API (`AGENTS.md`, `herdr.d.ts`) and record what it allows (docs/PLAN.md, piece 5)
-- [x] Dialog: list with columns and details in theme colors, opened with `mod.open herdr-machines` (key, palette, other mods)
-- [x] Prompting actions open a terminal on this computer running the CLI; others run through `exec` with flags and refresh (exit 3 falls back to a terminal)
-- [x] Start the CLI through `bin/herdr-machines` and `bin/run` (node from PATH, fnm fallback); the mod finds it through `herdr plugin list --json`
-- [x] Glyph helper and open action for other mods: `app-mod/glyphs.js` to copy (mods can't import each other)
-- [x] Tests against stand ins for `gpui-kit`, `gpui-base` and `herdr`
-- [x] README: install the mod, key binding, wire it into your own spaces panel (example)
-- [ ] `herdr-app check` passes on the installed mod (the install runs it when `herdr-app` is on PATH; confirm the output)
+- [x] Built and tested here (commit `55b752c`), then moved out: the plugin is TUI only, the app keeps syncing through `hc`
+- [ ] Put the dialog mod in your dotfiles as a personal mod and check it with `herdr-app check`
 
 ## 4. Docs and release
 
-- [x] One command install: `herdr plugin install maumercado/herdr-remotes-management` (build step `check` fails the install when a requirement is missing; build step `install-app-mod` links the app mod)
+- [x] One command install: `herdr plugin install maumercado/herdr-remotes-management` (build step `check` fails the install when a requirement is missing)
 - [x] Remove `setup` and saved binary paths
-- [x] App mod set up without manual copying: a link to the plugin's `app-mod`, made by the build step and by a startup hook (covers `herdr plugin link`, which runs neither)
+- [x] TUI only: app front end removed, `hc` optional in `check`
 
 - [x] README: what it does, install, commands, safety notes, how matching works, troubleshooting
 - [ ] GitHub topic `herdr-plugin` so it shows in the plugin index (run by you: `gh repo edit maumercado/herdr-remotes-management --add-topic herdr-plugin`; this session can't change repo settings)
@@ -86,9 +80,9 @@ Rules:
 
 ## 5. Real runs (on your computer)
 
-- [ ] `herdr plugin install maumercado/herdr-remotes-management` on your computer (both front ends)
+- [ ] `herdr plugin install maumercado/herdr-remotes-management` on your computer
 - [ ] `ls -la ~/.ssh ~/.ssh/config.d` and run `herdr-machines list`
-- [ ] Bind the action, open the popup inside herdr; open the dialog in the app
+- [ ] Bind the action, open the popup inside herdr
 - [ ] Throwaway VM (OrbStack, Lima or UTM): add, edit port then reconnect, rename label, rename hc name, rename alias, delete
 - [ ] Adopt one existing host
 - [ ] One real machine end to end

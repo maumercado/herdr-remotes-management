@@ -15,7 +15,7 @@ The TUI and the app keep separate machine lists (different programs, different s
 ## Decisions already made
 
 - Language: TypeScript, run directly by Node (native type stripping: Node 22.18 or newer, 26 recommended; no build step, no runtime npm dependencies). Only erasable TS syntax: no enums, namespaces or parameter properties.
-- Install is one command, `herdr plugin install maumercado/herdr-remotes-management` (revised 2026-11-07, replacing a separate `setup` step). Requirements are Node 22.18 or newer, OpenSSH's `ssh`, `herdr` and `hc`, all found on PATH. The plugin's first build step runs `herdr-machines check`, which fails the install and lists what is missing. The second build step links `~/.config/herdr-app/mods/herdr-machines` to the plugin's `app-mod` folder (the app loads mods through symlinks: `scan_dir` checks `main.js` with `is_file`, which follows links). The same script runs as a `[[startup]]` hook, so a linked plugin (`herdr plugin link` runs no build steps or startup hooks) gets the mod at the next herdr start, and the link follows the plugin to its new folder after updates. It only ever replaces its own link or copy, and exits at once when the link is already right. No paths are saved anywhere: herdr starts plugin commands with your environment, the Herdr app starts programs with your login shell's PATH, and the app mod finds the CLI through `herdr plugin list --json` (`plugin_root`).
+- Install is one command, `herdr plugin install maumercado/herdr-remotes-management`. Requirements are Node 22.18 or newer, OpenSSH's `ssh` and `herdr`, all found on PATH; `hc` is optional (with it, every change also reaches the Herdr app). The plugin's only build step runs `herdr-machines check`, which fails the install and lists what is missing. No paths are saved anywhere: herdr starts plugin commands with your environment.
 - Node version: `bin/run` uses `HERDR_MACHINES_NODE`, else `node` on PATH when it is 22.18 or newer, else `fnm exec` with the repo's `.node-version` (26).
 - Source lives in `~/code/herdr-remotes-management` (GitHub: `herdr-remotes-management`, public). The herdr plugin is linked from there with `herdr plugin link`.
 - Generic by design: nothing personal in file names, ids, paths, config or defaults, so anyone can install it. The tool, CLI, plugin, app mod and state folder are all named `herdr-machines`. Personal wiring (a key binding, your own spaces mod) lives in your own config, not in this repo; the README shows examples.
@@ -113,23 +113,9 @@ Every command prints a step report, e.g. `ssh ✓  tui ✓  app ✕ (needs_login
 - Interactive steps: leave the alternate screen and raw mode before starting a child process with `stdio: "inherit"`, restore both when it exits, then redraw.
 - Drawn by hand with ANSI (no dependencies), sized for narrow popups (single pane under 76 columns).
 
-### 5. App front end: Herdr app mod `herdr-machines`
+### 5. App front end (moved out, 2026-11-07)
 
-What the mod API allows (read from herdr-app `defaults/AGENTS.md` and `defaults/herdr.d.ts`, commit `adf94cb`):
-
-- Mods are JavaScript (gpui-kit), live in `~/.config/herdr-app/mods/<name>/` with `main.js` and `mod.json`, and reload on save. `mod.json` with `"place": "none"` and an `overlay` keeps the mod out of layouts and lets `mod.open <name>` open it as a dialog (the shipped `machine-add` mod works this way).
-- `mod.open` is an ordinary app command, so a key (`"cmd-shift-m": "mod.open:herdr-machines"` in `keys.json`), the palette and any mod (`run("mod.open", { name })`) can open the dialog.
-- Mods can't load other mods' code at run time. The state glyph helper is therefore a file to copy (`app-mod/glyphs.js`), not an import.
-- `exec` runs programs in the user's real environment (Finder launches load the login shell's PATH). The mod finds the CLI with `herdr plugin list --json` and runs `<plugin_root>/bin/herdr-machines`, which finds node through `bin/run`.
-- `terminal.open {argv, name}` opens a terminal in the focused space. A space on another machine would run it there, so the mod uses `space.new {machine: ""}` (this computer) when the focused space is remote.
-
-How the mod uses it:
-
-- Opened with `mod.open herdr-machines` (key, palette, or a button in another mod).
-- Reads `herdr-machines list --all --json`, then again with `--health`. Machines on the left with SSH, TUI and APP glyphs in theme colours, details on the right, adopt candidates under Adopt.
-- The dialog asks its own questions and passes the answers as flags (`--yes`, `--ssh=keep|delete`). Quiet actions (rename label, rename app name, delete) run through `exec` and refresh; when one exits with code 3 it reruns in a terminal. Actions that can prompt (add, edit, adopt, log in, alias rename, doctor) run in a terminal on this computer through a small `sh` wrapper that waits for Enter, so the report stays readable, and the dialog closes.
-- `app-mod/glyphs.js` (copy into your own mod): `appMachineStates()` from `hc machine ls --json`, `machineGlyph(state)` and `openMachines()`. Using it in your own spaces panel (`mau-spaces`, for example) is a change in that mod, outside this repo.
-- Tested here against stand ins for `gpui-kit`, `gpui-base` and `herdr` (test/appmod.test.ts). `herdr-app check` on a real install is the final check.
+The plugin is for the herdr TUI only. The Herdr app keeps getting every change through `hc` when it is installed, but there is no app front end here: the app already ships its own machine dialog, and installing a mod from a herdr plugin needed link scripts and a startup hook. The dialog mod that was built for this (commit `55b752c`, `app-mod/`) lives on as a personal mod in your dotfiles. It finds the CLI through `herdr plugin list --json` (`plugin_root`), so it keeps working with the installed plugin.
 
 ## Testing
 
@@ -170,6 +156,8 @@ None. Type checking (answered 2026-11-07): `npm run typecheck` runs `tsc --noEmi
 - App `exec`: absolute paths for `node`, `herdr`, `hc`.
 - Flags for every prompt (`--yes`, `--ssh=keep|delete`), exit codes, `--json` never prompts.
 - Testing on a throwaway VM instead of `localhost`.
+
+Fourth revision: the plugin is for the herdr TUI only and `hc` is optional. The app dialog mod moved out of the repo into your dotfiles; the CLI still syncs the app through `hc`.
 
 Third revision: install is just `herdr plugin install`. The app mod is a link to the plugin's folder, kept right by a build step and a startup hook that exits at once. The `setup` command and its saved paths are gone; requirements are checked by a build step that fails the install, and the app mod is copied by another build step and finds the CLI through `herdr plugin list`.
 

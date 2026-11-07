@@ -200,15 +200,17 @@ test("doctor finds drift and fixes it with --fix --yes", () => {
   assert.deepEqual(sb.hc().map((m) => m.target), ["box"]);
 });
 
-test("check passes with every requirement and names what is missing", () => {
+test("check passes with every requirement, treats hc as optional, and names what is missing", () => {
   const sb = sandbox();
   const ok = sb.run(["check", "--json"]);
   assert.equal(ok.code, 0, ok.stderr);
   assert.equal(ok.json.ok, true);
-  const missing = sb.run(["check"], { HERDR_MACHINES_HC: "/nonexistent/hc" });
-  assert.equal(missing.code, 1);
-  assert.match(missing.stdout, /✕ hc/);
-  assert.match(missing.stdout, /Missing hc/);
+  const noHc = sb.run(["check"], { HERDR_MACHINES_HC: "/nonexistent/hc" });
+  assert.equal(noHc.code, 0, "hc is optional");
+  assert.match(noHc.stdout, /○ hc .*optional/);
+  const noHerdr = sb.run(["check"], { HERDR_MACHINES_HERDR: "/nonexistent/herdr" });
+  assert.equal(noHerdr.code, 1);
+  assert.match(noHerdr.stdout, /Missing herdr/);
 });
 
 test("unknown commands and flags are bad input", () => {
