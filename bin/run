@@ -1,0 +1,18 @@
+#!/bin/sh
+# Starts the herdr-machines CLI with a stable node and passes every argument on.
+# Order: $HERDR_MACHINES_NODE, the path saved by `herdr-machines setup`,
+# `fnm exec` with this repo's .node-version, then `node` on PATH.
+# A node path from a version manager's per-shell link is never stored.
+set -eu
+root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+main="$root/src/main.ts"
+state="${XDG_STATE_HOME:-$HOME/.local/state}/herdr-machines"
+node="${HERDR_MACHINES_NODE:-}"
+if [ -z "$node" ] && [ -r "$state/bins.json" ]; then
+  node=$(sed -n 's/^ *"node": *"\([^"]*\)".*/\1/p' "$state/bins.json" | head -n 1)
+  [ -n "$node" ] && [ -x "$node" ] || node=""
+fi
+if [ -z "$node" ] && command -v fnm >/dev/null 2>&1; then
+  exec fnm exec --using="$root/.node-version" node "$main" "$@"
+fi
+exec "${node:-node}" "$main" "$@"

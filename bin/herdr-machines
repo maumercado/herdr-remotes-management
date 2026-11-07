@@ -1,0 +1,12 @@
+#!/bin/sh
+# herdr-machines command. Safe to symlink onto your PATH.
+set -eu
+self=$0
+while [ -L "$self" ]; do
+  link=$(readlink "$self")
+  case $link in
+    /*) self=$link ;;
+    *) self=$(dirname -- "$self")/$link ;;
+  esac
+done
+exec sh "$(dirname -- "$self")/run" "$@"
