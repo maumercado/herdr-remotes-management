@@ -115,7 +115,7 @@ Every command prints a step report, e.g. `ssh ✓  tui ✓  app ✕ (needs_login
 
 ### 5. App front end (moved out, 2026-11-07)
 
-The plugin is for the herdr TUI only. The Herdr app keeps getting every change through `hc` when it is installed, but there is no app front end here: the app already ships its own machine dialog, and installing a mod from a herdr plugin needed link scripts and a startup hook. The dialog mod that was built for this (commit `55b752c`, `app-mod/`) lives on as a personal mod in your dotfiles. It finds the CLI through `herdr plugin list --json` (`plugin_root`), so it keeps working with the installed plugin.
+The plugin is for the herdr TUI only. The Herdr app keeps getting every change through `hc` when it is installed, but there is no app front end here: the app already ships its own machine dialog, and installing a mod from a herdr plugin needed link scripts and a startup hook. The dialog mod that was built for this (commit `55b752c`, `app-mod/`) lives on as a personal mod in your dotfiles: Stow package `herdr-app` (`~/.dotfiles/herdr-app/.config/herdr-app/mods/herdr-machines/`). It finds the CLI through `herdr plugin list --json` (`plugin_root`), so it keeps working with the installed plugin.
 
 ## Testing
 

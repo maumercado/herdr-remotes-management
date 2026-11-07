@@ -66,7 +66,8 @@ Rules:
 ## 3. App mod (moved out of this repo)
 
 - [x] Built and tested here (commit `55b752c`), then moved out: the plugin is TUI only, the app keeps syncing through `hc`
-- [ ] Put the dialog mod in your dotfiles as a personal mod and check it with `herdr-app check`
+- [x] Put the dialog mod in your dotfiles as Stow package `herdr-app` (`~/.dotfiles/herdr-app/.config/herdr-app/mods/herdr-machines/`)
+- [ ] Commit it in the dotfiles, `stow herdr-app`, and check it with `herdr-app check` (run by you)
 
 ## 4. Docs and release
 
