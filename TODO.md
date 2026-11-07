@@ -74,6 +74,7 @@ Rules:
 - [x] One command install: `herdr plugin install maumercado/herdr-remotes-management` (build step `check` fails the install when a requirement is missing)
 - [x] Remove `setup` and saved binary paths
 - [x] TUI only: app front end removed, `hc` optional in `check`
+- [x] Popup first: no shell command to install; the CLI is documented for scripting (plugin folder from `herdr plugin list`)
 
 - [x] README: what it does, install, commands, safety notes, how matching works, troubleshooting
 - [ ] GitHub topic `herdr-plugin` so it shows in the plugin index (run by you: `gh repo edit maumercado/herdr-remotes-management --add-topic herdr-plugin`; this session can't change repo settings)
@@ -82,7 +83,7 @@ Rules:
 ## 5. Real runs (on your computer)
 
 - [ ] `herdr plugin install maumercado/herdr-remotes-management` on your computer
-- [ ] `ls -la ~/.ssh ~/.ssh/config.d` and run `herdr-machines list`
+- [x] `ls -la ~/.ssh`: real folder, `config` is a Stow link (handled: writes go through the link, managed file stays outside the repo)
 - [ ] Bind the action, open the popup inside herdr
 - [ ] Throwaway VM (OrbStack, Lima or UTM): add, edit port then reconnect, rename label, rename hc name, rename alias, delete
 - [ ] Adopt one existing host

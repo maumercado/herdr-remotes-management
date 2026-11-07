@@ -47,21 +47,6 @@ description = "manage machines"
 
 `prefix+m` is free in herdr's defaults (0.9.5).
 
-### The CLI in your shell (optional)
-
-The popup runs the CLI from herdr's plugin folder. To use it from a terminal too, add this to your `.zshrc` or `.bashrc`:
-
-```sh
-herdr-machines() {
-  local root
-  root=$(herdr plugin list --json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const p=(JSON.parse(s).result?.plugins??[]).find(p=>p.plugin_id==="herdr-machines");if(p)console.log(p.plugin_root)})')
-  [ -n "$root" ] || { echo "herdr-machines: plugin not installed" >&2; return 1; }
-  sh "$root/bin/run" "$@"
-}
-```
-
-It looks the folder up each time, so it keeps working after `herdr plugin update`.
-
 ### Uninstall
 
 ```sh
@@ -87,30 +72,28 @@ Edits in the checkout apply to the popup on its next open.
 
 ## Using it
 
-```sh
-herdr-machines list                       # machines and their state in each place
-herdr-machines list --all --health        # plus hosts you could adopt, with live herdr checks
-herdr-machines add box1 --host 10.0.0.5   # user, port and key fall back to SSH's defaults
-herdr-machines add box2 --host 10.0.0.6 --same-as-last
-herdr-machines adopt work-vm              # a Host you already have in ~/.ssh/config
-herdr-machines edit box1 --port 2222      # --user "" removes an option
-herdr-machines rename box1 --label "Build box"
-herdr-machines rename box1 --hc-name build
-herdr-machines rename box1 --alias build-box
-herdr-machines delete box1 --ssh=keep     # or --ssh=delete
-herdr-machines login box1                 # herdr reconnect and hc login, in your terminal
-herdr-machines doctor                     # find and fix drift between the three places
-```
+Press `prefix+m` in herdr. The popup lists your machines with their state in each place (SSH, TUI, APP) and the details of the selected one.
 
-Every change prints a step report:
+| Key | Does |
+|---|---|
+| `a` | add a machine (alias and host are enough; user, port and key fall back to SSH's defaults, `Ctrl-L` fills them as last time) |
+| `A` | adopt a host you already have in `~/.ssh/config` (its entry is never edited) |
+| `e` | edit host, user, port, key or jump host (managed machines) |
+| `r` | rename: the herdr label, the app name, or the SSH alias |
+| `d` | delete from herdr and the app, then choose whether to delete the SSH entry |
+| `l` | log in again (herdr reconnect, hc login) |
+| `s` | doctor: find and fix drift between the three places |
+| `/` | filter |
+| `R` | refresh, with live health checks |
+| `q` | close |
+
+Changes run in the popup's terminal, so host key, password, session and install prompts reach you. Each one ends with a step report:
 
 ```
 ssh ✓  tui ✓  app ✕ (needs_login)
 ```
 
-When a step fails you can retry it, undo the steps already done, or leave it for `doctor` (`--on-fail=ask|undo|leave`).
-
-Glyphs, in the CLI table and the popup:
+When a step fails you can retry it, undo the steps already done, or leave it for doctor.
 
 | Glyph | Meaning |
 |---|---|
@@ -123,9 +106,17 @@ Glyphs, in the CLI table and the popup:
 | `✕` | unreachable |
 | `◌` | disabled in herdr |
 
-### Popup keys
+### Scripting
 
-`a` add, `A` adopt, `e` edit, `r` rename, `d` delete, `l` log in, `s` doctor, `/` filter, `R` refresh, `q` close. In the add form, `Ctrl-L` fills user, port, key and jump host as last time.
+The popup runs a CLI that you can call too, for scripts or `--json` output. It lives in the plugin's folder, which herdr moves on each update, so look the folder up when you call it:
+
+```sh
+root=$(herdr plugin list --json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const p=JSON.parse(s).result.plugins.find(p=>p.plugin_id==="herdr-machines");console.log(p.plugin_root)})')
+sh "$root/bin/run" list --json
+sh "$root/bin/run" doctor --fix --yes
+```
+
+From a checkout, `bin/herdr-machines <command>` does the same. Commands: `list [--all] [--health]`, `add`, `adopt`, `edit`, `rename`, `delete`, `login`, `doctor [--fix]`, `check`; `help` prints the details.
 
 ## How it works
 
@@ -167,7 +158,7 @@ Exit codes: `0` done, `1` a step failed, `2` bad input, `3` a question came up w
 
 ## Troubleshooting
 
-- **The TUI or APP column is empty.** `herdr` or `hc` wasn't found or failed; `list` prints why, and `herdr-machines check` shows what is on your PATH.
+- **The TUI or APP column is empty.** `herdr` or `hc` wasn't found or failed; the `check` command (see Scripting) shows what is on your PATH.
 - **"needs a terminal" (exit 3).** Run the same command in a terminal, or answer with the flag it names.
 - **"rolled back: HostName resolves to ..."**. Another `Host` block matched first. Run `doctor`, which reports aliases defined twice.
 - **A machine needs attention in herdr that isn't a login** (an outdated server, say). Run `herdr --remote <alias>` in a terminal outside herdr.
