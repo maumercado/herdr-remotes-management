@@ -76,6 +76,8 @@ export interface Bins {
   hc: string;
   ssh: string;
   node?: string;
+  /** Absolute path of bin/herdr-machines, saved by `setup` for the app mod. */
+  cli?: string;
 }
 
 /**

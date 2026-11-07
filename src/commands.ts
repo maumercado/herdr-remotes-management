@@ -14,6 +14,7 @@ import { aliasProblem, cleanHcName, Hc, hcNameProblem, Herdr, portProblem } from
 import { readJson, writeJson } from "./fsx.ts";
 import { locateInLoginShell, saveBins } from "./proc.ts";
 import { formatTable, stateView } from "./view.ts";
+import { fileURLToPath } from "node:url";
 
 export interface CommandResult {
   code: number;
@@ -519,6 +520,8 @@ export async function setup(ctx: Ctx): Promise<CommandResult> {
     // The node running right now: for fnm this is the real installation path,
     // not the per-shell link that disappears.
     node: process.execPath,
+    // This checkout's launcher, for front ends that can't rely on PATH (the app mod).
+    cli: fileURLToPath(new URL("../bin/herdr-machines", import.meta.url)),
   };
   saveBins(ctx.p, found);
   const lines = [

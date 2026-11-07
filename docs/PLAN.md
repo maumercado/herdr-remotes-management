@@ -114,12 +114,21 @@ Every command prints a step report, e.g. `ssh ✓  tui ✓  app ✕ (needs_login
 
 ### 5. App front end: Herdr app mod `herdr-machines`
 
-- Opened as a dialog from the palette, or from any mod that calls its exported "open dialog" action (for example a button on a spaces panel's machine headers).
-- PATH: commands started by a macOS app get launchd's PATH (`/usr/bin:/bin:/usr/sbin:/sbin`), so `node`, `herdr` and `hc` may not resolve. The mod starts the CLI through `bin/run` (absolute path), which finds node as described under Decisions, and the CLI uses the absolute `herdr` and `hc` paths stored in the state folder (resolved once from your login shell, the way ssh-config-dash's `runner.ts` does it).
-- Reads `node src/main.ts list --json` through `exec`, then `list --json --health`. Renders the same columns and details with theme colors.
-- The dialog asks its own questions and passes the answers as flags (`--yes`, `--ssh=keep|delete`), so `exec` calls never prompt. Actions that can prompt (add, adopt, reconnect, alias rename) open a terminal running the same core command (`terminal.open` with `argv`), so the app and TUI behave the same. Non-interactive ones (rename label, delete after confirm in the dialog) run through `exec` and refresh.
-- Exports a state glyph helper (connected, connecting, needs login, unreachable, read from `hc machine ls --json`) and the "open dialog" action for other mods. Using them from your own `mau-spaces` is a change in that mod, outside this repo.
-- Checked with `herdr-app check` before it is called done.
+What the mod API allows (read from herdr-app `defaults/AGENTS.md` and `defaults/herdr.d.ts`, commit `adf94cb`):
+
+- Mods are JavaScript (gpui-kit), live in `~/.config/herdr-app/mods/<name>/` with `main.js` and `mod.json`, and reload on save. `mod.json` with `"place": "none"` and an `overlay` keeps the mod out of layouts and lets `mod.open <name>` open it as a dialog (the shipped `machine-add` mod works this way).
+- `mod.open` is an ordinary app command, so a key (`"cmd-shift-m": "mod.open:herdr-machines"` in `keys.json`), the palette and any mod (`run("mod.open", { name })`) can open the dialog.
+- Mods can't load other mods' code at run time. The state glyph helper is therefore a file to copy (`app-mod/glyphs.js`), not an import.
+- `exec` runs programs in the user's real environment. The mod still calls the CLI by the absolute path `setup` saves (`cli` in `bins.json`), and the CLI finds node through `bin/run`.
+- `terminal.open {argv, name}` opens a terminal in the focused space. A space on another machine would run it there, so the mod uses `space.new {machine: ""}` (this computer) when the focused space is remote.
+
+How the mod uses it:
+
+- Opened with `mod.open herdr-machines` (key, palette, or a button in another mod).
+- Reads `herdr-machines list --all --json`, then again with `--health`. Machines on the left with SSH, TUI and APP glyphs in theme colours, details on the right, adopt candidates under Adopt.
+- The dialog asks its own questions and passes the answers as flags (`--yes`, `--ssh=keep|delete`). Quiet actions (rename label, rename app name, delete) run through `exec` and refresh; when one exits with code 3 it reruns in a terminal. Actions that can prompt (add, edit, adopt, log in, alias rename, doctor) run in a terminal on this computer through a small `sh` wrapper that waits for Enter, so the report stays readable, and the dialog closes.
+- `app-mod/glyphs.js` (copy into your own mod): `appMachineStates()` from `hc machine ls --json`, `machineGlyph(state)` and `openMachines()`. Using it in your own spaces panel (`mau-spaces`, for example) is a change in that mod, outside this repo.
+- Tested here against stand ins for `gpui-kit`, `gpui-base` and `herdr` (test/appmod.test.ts). `herdr-app check` on a real install is the final check.
 
 ## Testing
 

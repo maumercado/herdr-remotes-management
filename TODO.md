@@ -65,13 +65,14 @@ Rules:
 
 ## 3. App mod (Herdr app)
 
-- [ ] Read the mod API (`AGENTS.md`, `herdr.d.ts`) and record what it allows
-- [ ] Dialog: list with columns and details in theme colors, opened from the palette
-- [ ] Prompting actions open a terminal running the CLI; others run through `exec` with flags and refresh
-- [ ] Start the CLI through `bin/run` (stable node, works with fnm)
-- [ ] Export the state glyph helper and an "open dialog" action for other mods (or the fallback command id)
-- [ ] README: install the mod, wire it into your own spaces panel (example)
-- [ ] `herdr-app check` passes (run by you if it can't run here)
+- [x] Read the mod API (`AGENTS.md`, `herdr.d.ts`) and record what it allows (docs/PLAN.md, piece 5)
+- [x] Dialog: list with columns and details in theme colors, opened with `mod.open herdr-machines` (key, palette, other mods)
+- [x] Prompting actions open a terminal on this computer running the CLI; others run through `exec` with flags and refresh (exit 3 falls back to a terminal)
+- [x] Start the CLI through `bin/herdr-machines` and `bin/run` (stable node, works with fnm); `setup` saves the path as `cli` in `bins.json`
+- [x] Glyph helper and open action for other mods: `app-mod/glyphs.js` to copy (mods can't import each other)
+- [x] Tests against stand ins for `gpui-kit`, `gpui-base` and `herdr`
+- [ ] README: install the mod, key binding, wire it into your own spaces panel (example)
+- [ ] `herdr-app check ~/.config/herdr-app/mods/herdr-machines` passes (run by you; the app isn't available here)
 
 ## 4. Docs and release
 
