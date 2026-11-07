@@ -13,8 +13,13 @@ platforms = ["linux", "macos"]
 [[build]]
 command = ["sh", "bin/run", "check"]
 
-# Copies the Herdr app mod into ~/.config/herdr-app/mods/herdr-machines.
+# Links ~/.config/herdr-app/mods/herdr-machines to this plugin's app-mod folder.
 [[build]]
+command = ["sh", "bin/install-app-mod"]
+
+# Same at each herdr start, so a linked plugin gets the app mod too
+# (`herdr plugin link` runs no build steps). Exits at once when nothing changed.
+[[startup]]
 command = ["sh", "bin/install-app-mod"]
 
 # The manager itself: a popup running the CLI's terminal UI.

@@ -76,8 +76,9 @@ Rules:
 
 ## 4. Docs and release
 
-- [x] One command install: `herdr plugin install maumercado/herdr-remotes-management` (build step `check` fails the install when a requirement is missing; build step `install-app-mod` copies the app mod)
+- [x] One command install: `herdr plugin install maumercado/herdr-remotes-management` (build step `check` fails the install when a requirement is missing; build step `install-app-mod` links the app mod)
 - [x] Remove `setup` and saved binary paths
+- [x] App mod set up without manual copying: a link to the plugin's `app-mod`, made by the build step and by a startup hook (covers `herdr plugin link`, which runs neither)
 
 - [x] README: what it does, install, commands, safety notes, how matching works, troubleshooting
 - [ ] GitHub topic `herdr-plugin` so it shows in the plugin index (run by you: `gh repo edit maumercado/herdr-remotes-management --add-topic herdr-plugin`; this session can't change repo settings)

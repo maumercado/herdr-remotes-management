@@ -37,9 +37,9 @@ That one command:
 
 1. checks the requirements above (`herdr-machines check`), and fails if any is missing
 2. registers the herdr TUI popup
-3. copies the Herdr app dialog into `~/.config/herdr-app/mods/herdr-machines` (skipped when the app has no config folder yet, or with `HERDR_MACHINES_SKIP_APP_MOD=1`; a folder of that name you made yourself is left alone)
+3. links the Herdr app dialog: `~/.config/herdr-app/mods/herdr-machines` points at the plugin's `app-mod` folder (skipped when the app has no config folder yet, or with `HERDR_MACHINES_SKIP_APP_MOD=1`; a folder of that name you made yourself is left alone)
 
-`herdr plugin install` shows the commands it will run before it runs them. `herdr plugin update` updates both front ends.
+`herdr plugin install` shows the commands it will run before it runs them. `herdr plugin update` updates both front ends. The same link step also runs each time herdr starts (it exits at once when the link is already right), so the dialog stays in place if you open the Herdr app for the first time later.
 
 Then bind the popup to a key in herdr's `config.toml`:
 
@@ -76,7 +76,7 @@ It looks the folder up each time, so it keeps working after `herdr plugin update
 
 ```sh
 herdr plugin uninstall herdr-machines
-rm -rf ~/.config/herdr-app/mods/herdr-machines
+rm ~/.config/herdr-app/mods/herdr-machines
 ```
 
 Machines you added stay in `~/.ssh/config.d/herdr-machines`, herdr and the app. To remove the SSH side too, delete that file and the two lines this tool added at the top of `~/.ssh/config`.
@@ -86,10 +86,16 @@ Machines you added stay in `~/.ssh/config.d/herdr-machines`, herdr and the app. 
 ```sh
 git clone https://github.com/maumercado/herdr-remotes-management.git ~/code/herdr-remotes-management
 herdr plugin link ~/code/herdr-remotes-management
-ln -s ~/code/herdr-remotes-management/app-mod ~/.config/herdr-app/mods/herdr-machines
 ```
 
-`plugin link` doesn't run the build steps, so run `bin/herdr-machines check` yourself. The dialog finds the CLI through `herdr plugin list`, which points at the linked checkout.
+`plugin link` runs no build steps and no startup hooks, so the app dialog gets linked to your checkout the next time a herdr server starts. To have it right away, and to check the requirements:
+
+```sh
+~/code/herdr-remotes-management/bin/herdr-machines check
+sh ~/code/herdr-remotes-management/bin/install-app-mod
+```
+
+Edits in the checkout apply to the popup on its next open. The dialog is a link to your checkout's `app-mod`; if the app doesn't pick up an edit, close and reopen the dialog. The dialog finds the CLI through `herdr plugin list`, which points at the linked checkout.
 
 ## Using it
 
