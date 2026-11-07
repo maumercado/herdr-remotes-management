@@ -2,19 +2,27 @@
 
 Manage SSH machines once for the [herdr](https://herdr.dev) TUI and the Herdr app.
 
-The herdr TUI (`herdr machine ...`) and the Herdr app (`hc machine ...`) keep separate machine lists, and neither edits `~/.ssh/config`. A machine added in one is invisible to the other. `herdr-machines` adds, edits, renames and deletes a machine in all three places in one step:
+The herdr TUI (`herdr machine ...`) and the Herdr app (`hc machine ...`) keep separate machine lists, and neither of them edits your SSH config. A machine you add in one is invisible to the other. `herdr-machines` adds, edits, renames and deletes a machine in all three places in one step:
 
-1. `~/.ssh/config`, through a managed include file
+1. `~/.ssh/config`, through a file this tool manages
 2. the herdr TUI's saved machines
 3. the Herdr app's machines
 
-> Status: in progress. See [TODO.md](TODO.md) for what is done and what is left, and [docs/PLAN.md](docs/PLAN.md) for the design.
+It comes with three front ends that all run the same CLI:
+
+| Front end | Where | Opens with |
+|---|---|---|
+| CLI | any terminal | `herdr-machines <command>` |
+| Popup | inside the herdr TUI (a herdr plugin) | a key you bind, e.g. `prefix+m` |
+| Dialog | inside the Herdr app (an app mod) | `mod.open herdr-machines`, a key or the palette |
+
+Progress and what is left: [TODO.md](TODO.md). Design and the reasons behind it: [docs/PLAN.md](docs/PLAN.md).
 
 ## Requirements
 
 - macOS or Linux with OpenSSH
-- Node 22.18 or newer (the repo pins 26 in `.node-version` for fnm, nvm and similar)
-- `herdr` and/or `hc` on your machine
+- Node 22.18 or newer. The repo pins 26 in `.node-version`, which fnm, nvm and similar tools read.
+- `herdr` and/or `hc`. With only one of them installed, the other column stays empty and its steps are skipped.
 
 ## Install
 
@@ -24,4 +32,173 @@ cd ~/code/herdr-remotes-management
 bin/herdr-machines setup
 ```
 
-More install steps (CLI on PATH, the TUI popup, the app mod) are added as those parts land.
+`setup` finds `herdr`, `hc` and `ssh` through your login shell and saves their paths, plus the node it ran with and this checkout's CLI path, to `~/.local/state/herdr-machines/bins.json`. The popup and the app dialog read that file, so run `setup` again after moving the checkout.
+
+Put the command on your PATH (optional):
+
+```sh
+ln -s ~/code/herdr-remotes-management/bin/herdr-machines ~/.local/bin/herdr-machines
+```
+
+### Node and version managers
+
+Nothing stores a node path from a version manager's per shell link (fnm's `fnm_multishells` folders disappear with the shell). `bin/run` picks node in this order:
+
+1. `$HERDR_MACHINES_NODE`
+2. the path `setup` saved (the real installation folder)
+3. `fnm exec --using=.node-version node`, when fnm is installed
+4. `node` on PATH
+
+### The herdr TUI popup
+
+```sh
+herdr plugin link ~/code/herdr-remotes-management
+```
+
+Then bind its action in herdr's `config.toml`:
+
+```toml
+[[keys.command]]
+key = "prefix+m"
+type = "plugin_action"
+command = "herdr-machines.open"
+description = "manage machines"
+```
+
+`prefix+m` is free in herdr's defaults (0.9.5). The plugin itself changes no config and runs nothing in the background.
+
+### The Herdr app dialog
+
+```sh
+ln -s ~/code/herdr-remotes-management/app-mod ~/.config/herdr-app/mods/herdr-machines
+herdr-app check ~/.config/herdr-app/mods/herdr-machines
+```
+
+If the app doesn't pick up a linked folder, copy it instead (`cp -R app-mod ~/.config/herdr-app/mods/herdr-machines`) and copy again after updates.
+
+Open it with `mod.open herdr-machines` from the palette, or bind a key in `~/.config/herdr-app/keys.json`:
+
+```json
+{ "global": { "cmd-shift-m": "mod.open:herdr-machines" } }
+```
+
+## Using it
+
+```sh
+herdr-machines list                       # machines and their state in each place
+herdr-machines list --all --health        # plus hosts you could adopt, with live herdr checks
+herdr-machines add box1 --host 10.0.0.5   # user, port and key fall back to SSH's defaults
+herdr-machines add box2 --host 10.0.0.6 --same-as-last
+herdr-machines adopt work-vm              # a Host you already have in ~/.ssh/config
+herdr-machines edit box1 --port 2222      # --user "" removes an option
+herdr-machines rename box1 --label "Build box"
+herdr-machines rename box1 --hc-name build
+herdr-machines rename box1 --alias build-box
+herdr-machines delete box1 --ssh=keep     # or --ssh=delete
+herdr-machines login box1                 # herdr reconnect and hc login, in your terminal
+herdr-machines doctor                     # find and fix drift between the three places
+```
+
+Every change prints a step report:
+
+```
+ssh ✓  tui ✓  app ✕ (needs_login)
+```
+
+When a step fails you can retry it, undo the steps already done, or leave it for `doctor` (`--on-fail=ask|undo|leave`).
+
+Glyphs, in the CLI table, the popup and the dialog:
+
+| Glyph | Meaning |
+|---|---|
+| `●` | there and fine (SSH: managed by this tool) |
+| `◇` | your own SSH entry (adopted, never edited) |
+| `○` | missing |
+| `◐` | connecting |
+| `!` | needs login |
+| `↑` | needs an update on the remote |
+| `✕` | unreachable |
+| `◌` | disabled in herdr |
+
+### Popup keys
+
+`a` add, `A` adopt, `e` edit, `r` rename, `d` delete, `l` log in, `s` doctor, `/` filter, `R` refresh, `q` close. In the add form, `Ctrl-L` fills user, port, key and jump host as last time.
+
+## How it works
+
+**One name for everything.** The SSH alias is the target herdr and hc connect to (never a raw `user@host`). Rows are matched by that target, so herdr labels and app names can be anything. Changing a host, user, port, key or jump host only rewrites the SSH entry; herdr and the app pick it up on their next connection.
+
+**The managed file.** Machines this tool creates live in `~/.ssh/config.d/herdr-machines` (mode `600`), pulled in by one `Include` line at the very top of `~/.ssh/config`. That line is the only change the tool ever makes to `~/.ssh/config`. Hosts you wrote yourself are listed and can be adopted, but their entries are never edited or deleted.
+
+**Order.** Every change runs SSH first, then herdr, then the app. Input is checked before anything is written.
+
+**Connection reuse.** herdr names its shared SSH connection after the resolved host, port and user, so endpoint edits apply on the next connection. hc keeps its connection under the alias for up to 10 idle minutes, so `edit` offers to refresh the app's login (remove and add again with the same name and session).
+
+**Questions.** Anything that can ask you something (a host key, a password, herdr's session picker, installing on the remote) runs in your terminal. Nothing answers prompts for you. With `--json`, or without a terminal, a command that would need an answer stops with exit code 3 and changes nothing.
+
+## Safety
+
+- Every write is atomic and goes through symlinks, so a `~/.ssh/config` managed by Stow, chezmoi or yadm stays a symlink.
+- The tool refuses to put the managed file inside a git repository (a dotfiles repo may be public). Set `HERDR_MACHINES_ALLOW_REPO=1` if that is what you want.
+- Before each write, the old file is copied to `~/.local/state/herdr-machines/backups/` (the last 10 per file are kept).
+- After each write, `ssh -G <alias>` must resolve to what was written, or the write is rolled back.
+- A lock file stops the popup and the dialog from writing at the same time.
+- Key files are never read, copied or created. Only the `IdentityFile` path is stored.
+
+## Show machine state in your own app mod
+
+Mods can't import each other, so copy `app-mod/glyphs.js` next to your mod's `main.js`:
+
+```js
+import { appMachineStates, machineGlyph, openMachines } from "./glyphs.js";
+
+// init: refresh every 10 seconds
+cx.timer.every(10000, (cx) => cx.spawn(async (cx) => { this.states = await appMachineStates(); cx.notify(); }));
+
+// render: a glyph next to a machine name, and a button that opens the dialog
+const g = machineGlyph(this.states?.[name]);
+div().text_color(theme()[g.color]).child(g.glyph);
+div().id("machines").on_click(() => openMachines()).child("Machines");
+```
+
+## Reference
+
+Global options: `--json` (machine readable output, never asks), `--yes` / `-y` (answer yes), `--on-fail=ask|undo|leave`.
+
+Exit codes: `0` done, `1` a step failed, `2` bad input, `3` a question came up with nobody to answer it.
+
+| Environment variable | Effect |
+|---|---|
+| `HERDR_MACHINES_HERDR`, `HERDR_MACHINES_HC`, `HERDR_MACHINES_SSH` | use these binaries |
+| `HERDR_MACHINES_NODE` | node for `bin/run` |
+| `HERDR_MACHINES_ALLOW_REPO=1` | allow the managed file inside a git repo |
+| `XDG_STATE_HOME` | where the state folder lives (default `~/.local/state`) |
+
+## Troubleshooting
+
+- **The TUI or APP column is empty.** `herdr` or `hc` wasn't found or failed; `list` prints why. Run `setup` again.
+- **"needs a terminal" (exit 3).** Run the same command in a terminal, or answer with the flag it names.
+- **The dialog says to run setup.** It reads `~/.local/state/herdr-machines/bins.json`; run `bin/herdr-machines setup`.
+- **"rolled back: HostName resolves to ..."**. Another `Host` block matched first. Run `doctor`, which reports aliases defined twice.
+- **A machine needs attention in herdr that isn't a login** (an outdated server, say). Run `herdr --remote <alias>` in a terminal outside herdr.
+
+## Development
+
+```sh
+npm test            # node --test, no dependencies
+npm run typecheck   # fetches TypeScript on demand; nothing is added to package.json
+```
+
+| Path | What |
+|---|---|
+| `src/` | the CLI (TypeScript, run directly by node) |
+| `src/ui/` | the herdr popup (state, keys, drawing, terminal loop) |
+| `app-mod/` | the Herdr app mod (JavaScript, gpui-kit) |
+| `herdr-plugin.toml` | the herdr plugin manifest |
+| `test/` | tests, with fake `herdr`, `hc` and `ssh` in `test/fakes/` |
+| `docs/PLAN.md` | the design |
+| `TODO.md` | the checklist |
+
+## License
+
+Not chosen yet.

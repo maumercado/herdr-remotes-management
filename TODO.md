@@ -61,7 +61,7 @@ Rules:
 - [x] Tests for the pure parts (layout, key handling, form state)
 - [x] Smoke run in a pseudo terminal against the fakes (add from the popup, back to the list, quit)
 - [x] `login <alias>` command in the CLI for the `l` key (herdr reconnect, hc login)
-- [ ] README: link the plugin, example key binding (written with the full README in step 4)
+- [x] README: link the plugin, example key binding
 
 ## 3. App mod (Herdr app)
 
@@ -71,13 +71,13 @@ Rules:
 - [x] Start the CLI through `bin/herdr-machines` and `bin/run` (stable node, works with fnm); `setup` saves the path as `cli` in `bins.json`
 - [x] Glyph helper and open action for other mods: `app-mod/glyphs.js` to copy (mods can't import each other)
 - [x] Tests against stand ins for `gpui-kit`, `gpui-base` and `herdr`
-- [ ] README: install the mod, key binding, wire it into your own spaces panel (example)
+- [x] README: install the mod, key binding, wire it into your own spaces panel (example)
 - [ ] `herdr-app check ~/.config/herdr-app/mods/herdr-machines` passes (run by you; the app isn't available here)
 
 ## 4. Docs and release
 
-- [ ] README: what it does, install, commands, safety notes, how matching works, troubleshooting
-- [ ] GitHub topic `herdr-plugin` so it shows in the plugin index
+- [x] README: what it does, install, commands, safety notes, how matching works, troubleshooting
+- [ ] GitHub topic `herdr-plugin` so it shows in the plugin index (run by you: `gh repo edit maumercado/herdr-remotes-management --add-topic herdr-plugin`; this session can't change repo settings)
 - [ ] Pick a license (yours to choose)
 
 ## 5. Real runs (on your computer)

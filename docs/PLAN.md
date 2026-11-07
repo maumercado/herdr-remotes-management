@@ -44,7 +44,7 @@ The TUI and the app keep separate machine lists (different programs, different s
 
 ## Why the alias design pays off
 
-Neither CLI can change a machine's target. Because both point at the SSH alias, editing host, user, port, key or jump host only rewrites the SSH entry. herdr and hc pick it up on their next connection, so edits never need remove and add.
+Neither CLI can change a machine's target. Both point at the SSH alias, so editing host, user, port, key or jump host only rewrites the SSH entry, and herdr and hc pick it up on their next connection: edits never need remove and add.
 
 One condition: herdr's connection reuse (below) must not keep talking to the old endpoint. That is verified in build step 0 and tested.
 
