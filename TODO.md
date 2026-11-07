@@ -68,7 +68,7 @@ Rules:
 - [x] Built and tested here (commit `55b752c`), then moved out: the plugin is TUI only, the app keeps syncing through `hc`
 - [x] Put the dialog mod in your dotfiles as Stow package `herdr-app` (`~/.dotfiles/herdr-app/.config/herdr-app/mods/herdr-machines/`)
 - [ ] Commit it in the dotfiles, `stow herdr-app`, and check it with `herdr-app check` (run by you)
-- [x] `mau-spaces` (personal mod, outside this repo): state glyph per machine header (connected, connecting, needs login, needs update, unreachable) and a `⋯` button on This computer that opens the dialog
+- [x] `mau-spaces` (personal mod, outside this repo): each machine header's server icon is larger and coloured by state (green connected, yellow connecting, red needs login or update or unreachable, grey asleep) and a `⋯` button on This computer that opens the dialog
 - [x] TUI sidebar: checked herdr's source; its machine headers already show connection state (`●` online, `◐` connecting, `!` attention, `·` disabled), so nothing is added there
 
 ## 4. Docs and release
