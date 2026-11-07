@@ -17,13 +17,13 @@ Rules:
 - [x] Read hc's name rules and herdr's label rules in source
 - [x] Read the herdr plugin manifest docs (id rules, popup panes, key bindings)
 - [x] Decide type checking: `npm run typecheck` through `npx`, no dependency
-- [x] Node through fnm: `.node-version` pins 26; `bin/run` finds a stable node (saved real path, then `fnm exec`, then PATH)
+- [x] Node through fnm: `.node-version` pins 26; `bin/run` uses `node` on PATH when it is 22.18+, else `fnm exec`
 - [x] Repo scaffold: `package.json`, `.gitignore`, `.node-version`, `bin/herdr-machines`, `bin/run`, this file, docs/PLAN.md, README draft
 - [x] GitHub repo `herdr-remotes-management` (public) created and every commit pushed
 
 ## 1. Core CLI
 
-- [x] Paths and environment: state folder (`$XDG_STATE_HOME/herdr-machines`), binary resolution (`setup` command saves absolute paths)
+- [x] Paths and environment: state folder (`$XDG_STATE_HOME/herdr-machines`), binaries from PATH (`HERDR_MACHINES_*` overrides)
 - [x] Safe file writes: real path resolution, write through symlinks, atomic temp file and rename, mode `600`, lock file, backups (keep 10)
 - [x] Git repo check: refuse to put the managed file inside a git repo unless `HERDR_MACHINES_ALLOW_REPO=1`
 - [x] SSH config parser: literal aliases, multi pattern `Host` lines, negations, `Host=`, any keyword case, quoted values, `Match` and wildcards read only
@@ -44,7 +44,7 @@ Rules:
 - [x] `rename --label`, `rename --hc-name`, `rename --alias` (session kept)
 - [x] `delete [--yes] [--ssh=keep|delete]`
 - [x] `doctor [--json]` with one fix per row
-- [x] `setup` (resolve and save `herdr`, `hc`, `ssh`, `node` paths) and `help`
+- [x] `check` (requirements: Node 22.18+, `ssh`, `herdr`, `hc`) and `help`
 - [x] Fake `herdr`, `hc` and `ssh` for tests
 - [x] Unit tests: parser, writer, Include placement, symlinks, repo check, validation, merge, step runner, flags
 - [x] Command tests against the fakes
@@ -68,13 +68,16 @@ Rules:
 - [x] Read the mod API (`AGENTS.md`, `herdr.d.ts`) and record what it allows (docs/PLAN.md, piece 5)
 - [x] Dialog: list with columns and details in theme colors, opened with `mod.open herdr-machines` (key, palette, other mods)
 - [x] Prompting actions open a terminal on this computer running the CLI; others run through `exec` with flags and refresh (exit 3 falls back to a terminal)
-- [x] Start the CLI through `bin/herdr-machines` and `bin/run` (stable node, works with fnm); `setup` saves the path as `cli` in `bins.json`
+- [x] Start the CLI through `bin/herdr-machines` and `bin/run` (node from PATH, fnm fallback); the mod finds it through `herdr plugin list --json`
 - [x] Glyph helper and open action for other mods: `app-mod/glyphs.js` to copy (mods can't import each other)
 - [x] Tests against stand ins for `gpui-kit`, `gpui-base` and `herdr`
 - [x] README: install the mod, key binding, wire it into your own spaces panel (example)
-- [ ] `herdr-app check ~/.config/herdr-app/mods/herdr-machines` passes (run by you; the app isn't available here)
+- [ ] `herdr-app check` passes on the installed mod (the install runs it when `herdr-app` is on PATH; confirm the output)
 
 ## 4. Docs and release
+
+- [x] One command install: `herdr plugin install maumercado/herdr-remotes-management` (build step `check` fails the install when a requirement is missing; build step `install-app-mod` copies the app mod)
+- [x] Remove `setup` and saved binary paths
 
 - [x] README: what it does, install, commands, safety notes, how matching works, troubleshooting
 - [ ] GitHub topic `herdr-plugin` so it shows in the plugin index (run by you: `gh repo edit maumercado/herdr-remotes-management --add-topic herdr-plugin`; this session can't change repo settings)
@@ -82,8 +85,9 @@ Rules:
 
 ## 5. Real runs (on your computer)
 
+- [ ] `herdr plugin install maumercado/herdr-remotes-management` on your computer (both front ends)
 - [ ] `ls -la ~/.ssh ~/.ssh/config.d` and run `herdr-machines list`
-- [ ] `herdr plugin link` this folder, bind the action, open the popup inside herdr
+- [ ] Bind the action, open the popup inside herdr; open the dialog in the app
 - [ ] Throwaway VM (OrbStack, Lima or UTM): add, edit port then reconnect, rename label, rename hc name, rename alias, delete
 - [ ] Adopt one existing host
 - [ ] One real machine end to end

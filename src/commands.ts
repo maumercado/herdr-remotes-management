@@ -2,7 +2,7 @@
 // fixed order (SSH, TUI, app) and returns a report.
 
 import type { Ctx } from "./io.ts";
-import { confirm, NeedsTerminal, UsageError } from "./io.ts";
+import { confirm, EXIT, NeedsTerminal, UsageError } from "./io.ts";
 import type { Row, State } from "./model.ts";
 import { addHealth, isMachine, loadState } from "./model.ts";
 import type { Fields } from "./sshconfig.ts";
@@ -12,9 +12,8 @@ import type { Report, Step } from "./steps.ts";
 import { emptyReport, runSteps, skip } from "./steps.ts";
 import { aliasProblem, cleanHcName, Hc, hcNameProblem, Herdr, portProblem } from "./tools.ts";
 import { readJson, writeJson } from "./fsx.ts";
-import { locateInLoginShell, saveBins } from "./proc.ts";
+import { findExecutable } from "./proc.ts";
 import { formatTable, stateView } from "./view.ts";
-import { fileURLToPath } from "node:url";
 
 export interface CommandResult {
   code: number;
@@ -504,29 +503,35 @@ export async function login(ctx: Ctx, alias: string): Promise<CommandResult> {
 }
 
 // ---------------------------------------------------------------------------
-// setup
+// check
 
-const MIN_NODE: [number, number] = [22, 18];
+export const MIN_NODE: [number, number] = [22, 18];
 
-export async function setup(ctx: Ctx): Promise<CommandResult> {
+/**
+ * Checks the requirements: Node 22.18 or newer (the one running this),
+ * OpenSSH's ssh, herdr and hc. The herdr plugin runs this as its build step,
+ * so a missing requirement stops `herdr plugin install`.
+ */
+export async function check(ctx: Ctx): Promise<CommandResult> {
   const [major, minor] = process.versions.node.split(".").map(Number) as [number, number];
-  if (major < MIN_NODE[0] || (major === MIN_NODE[0] && minor < MIN_NODE[1])) {
-    throw new UsageError(`Node ${process.versions.node} is too old; ${MIN_NODE.join(".")} or newer is needed`);
-  }
-  const found = {
-    herdr: locateInLoginShell("herdr"),
-    hc: locateInLoginShell("hc"),
-    ssh: locateInLoginShell("ssh"),
-    // The node running right now: for fnm this is the real installation path,
-    // not the per-shell link that disappears.
-    node: process.execPath,
-    // This checkout's launcher, for front ends that can't rely on PATH (the app mod).
-    cli: fileURLToPath(new URL("../bin/herdr-machines", import.meta.url)),
-  };
-  saveBins(ctx.p, found);
-  const lines = [
-    `Saved to ${ctx.p.binsFile}:`,
-    ...Object.entries(found).map(([k, v]) => `  ${k.padEnd(5)} ${v ?? "(not found)"}`),
+  const nodeOk = major > MIN_NODE[0] || (major === MIN_NODE[0] && minor >= MIN_NODE[1]);
+  const items = [
+    { name: "node", found: process.execPath, ok: nodeOk, need: `Node ${MIN_NODE.join(".")} or newer (running ${process.versions.node})` },
+    ...([
+      ["ssh", ctx.bins.ssh, "the OpenSSH client"],
+      ["herdr", ctx.bins.herdr, "the herdr TUI (https://herdr.dev)"],
+      ["hc", ctx.bins.hc, "herdr-core's hc, which comes with the Herdr app"],
+    ] as const).map(([name, bin, need]) => {
+      const found = findExecutable(bin);
+      return { name, found, ok: Boolean(found), need };
+    }),
   ];
-  return { code: 0, data: found, text: lines.join("\n") };
+  const missing = items.filter((i) => !i.ok);
+  const lines = items.map((i) => `  ${i.ok ? "✓" : "✕"} ${i.name.padEnd(5)} ${i.ok ? i.found : `missing: ${i.need}`}`);
+  lines.push(missing.length === 0 ? "All requirements found." : `Missing ${missing.map((i) => i.name).join(", ")}. Install them and try again.`);
+  return {
+    code: missing.length === 0 ? EXIT.ok : EXIT.failed,
+    data: { ok: missing.length === 0, requirements: items },
+    text: lines.join("\n"),
+  };
 }

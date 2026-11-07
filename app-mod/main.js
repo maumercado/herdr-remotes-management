@@ -7,14 +7,15 @@
 // picker, installing on the remote) run in a terminal on this computer;
 // the others run quietly and the list refreshes.
 //
-// The CLI path comes from ~/.local/state/herdr-machines/bins.json, written by
-// `herdr-machines setup`.
+// The CLI comes from the herdr plugin: `herdr plugin list --json` says where
+// it is installed (or linked).
 
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input } from "gpui-base";
-import { exec, run, home, readTextFile, theme, props, closeOverlay, spaces } from "herdr";
+import { exec, run, home, theme, props, closeOverlay, spaces } from "herdr";
 
-const BINS = () => `${home()}/.local/state/herdr-machines/bins.json`;
+const PLUGIN_ID = "herdr-machines";
+const INSTALL = "herdr plugin install maumercado/herdr-remotes-management";
 
 const FIELDS = [
   ["host", "Host"],
@@ -28,6 +29,18 @@ const FIELDS = [
 const WRAP = '"$0" "$@"; code=$?; printf "\\nPress Enter to close. "; read _; exit $code';
 
 const GLYPH_COLOR = { "●": "done", "◇": "accent", "○": "dim", "◐": "working", "!": "blocked", "↑": "blocked", "✕": "ansi1", "◌": "dim" };
+
+/** bin/herdr-machines inside the installed (or linked) plugin, from `herdr plugin list --json`. */
+export function cliFromPluginList(stdout) {
+  try {
+    const data = JSON.parse(stdout);
+    const plugins = data?.result?.plugins ?? data?.plugins ?? [];
+    const plugin = plugins.find((p) => p.plugin_id === PLUGIN_ID);
+    return plugin?.plugin_root ? `${plugin.plugin_root}/bin/herdr-machines` : null;
+  } catch {
+    return null;
+  }
+}
 
 export function isMachine(m) {
   return Boolean(m.tui || m.app || m.ssh?.kind === "managed");
@@ -81,19 +94,15 @@ export default class Machines extends View {
   // Data
 
   async findCli() {
-    const text = await readTextFile(BINS()).catch(() => null);
-    if (!text) return null;
-    try {
-      return JSON.parse(text).cli ?? null;
-    } catch {
-      return null;
-    }
+    const r = await exec("herdr", ["plugin", "list", "--json"], { timeout: 15000 }).catch(() => null);
+    if (!r || r.code !== 0) return null;
+    return cliFromPluginList(r.stdout);
   }
 
   async load(health) {
     this.cli ??= await this.findCli();
     if (!this.cli) {
-      this.error = "Run `herdr-machines setup` once in a terminal so this dialog can find the CLI.";
+      this.error = `The herdr plugin isn't installed. Run this in a terminal, then reopen: ${INSTALL}`;
       return;
     }
     const r = await exec(this.cli, ["list", "--all", "--json", ...(health ? ["--health"] : [])], { timeout: 60000 }).catch((e) => ({ code: 1, stdout: "", stderr: String(e) }));

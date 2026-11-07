@@ -200,12 +200,15 @@ test("doctor finds drift and fixes it with --fix --yes", () => {
   assert.deepEqual(sb.hc().map((m) => m.target), ["box"]);
 });
 
-test("setup saves binary paths and the running node", () => {
+test("check passes with every requirement and names what is missing", () => {
   const sb = sandbox();
-  const r = sb.run(["setup", "--json"], { SHELL: "/bin/sh" });
-  assert.equal(r.code, 0, r.stderr);
-  const saved = JSON.parse(readFileSync(join(sb.home, ".local/state/herdr-machines/bins.json"), "utf8"));
-  assert.equal(saved.node, process.execPath);
+  const ok = sb.run(["check", "--json"]);
+  assert.equal(ok.code, 0, ok.stderr);
+  assert.equal(ok.json.ok, true);
+  const missing = sb.run(["check"], { HERDR_MACHINES_HC: "/nonexistent/hc" });
+  assert.equal(missing.code, 1);
+  assert.match(missing.stdout, /✕ hc/);
+  assert.match(missing.stdout, /Missing hc/);
 });
 
 test("unknown commands and flags are bad input", () => {

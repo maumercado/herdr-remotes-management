@@ -20,42 +20,28 @@ Progress and what is left: [TODO.md](TODO.md). Design and the reasons behind it:
 
 ## Requirements
 
-- macOS or Linux with OpenSSH
-- Node 22.18 or newer. The repo pins 26 in `.node-version`, which fnm, nvm and similar tools read.
-- `herdr` and/or `hc`. With only one of them installed, the other column stays empty and its steps are skipped.
+- macOS or Linux
+- Node 22.18 or newer on your PATH (with fnm, Node 26 from this repo's `.node-version` is used when the node on PATH is older)
+- OpenSSH's `ssh`
+- `herdr` (the TUI) and `hc` (herdr-core, which comes with the Herdr app)
+
+Install stops and lists what is missing when any of these isn't found.
 
 ## Install
 
 ```sh
-git clone https://github.com/maumercado/herdr-remotes-management.git ~/code/herdr-remotes-management
-cd ~/code/herdr-remotes-management
-bin/herdr-machines setup
+herdr plugin install maumercado/herdr-remotes-management
 ```
 
-`setup` finds `herdr`, `hc` and `ssh` through your login shell and saves their paths, plus the node it ran with and this checkout's CLI path, to `~/.local/state/herdr-machines/bins.json`. The popup and the app dialog read that file, so run `setup` again after moving the checkout.
+That one command:
 
-Put the command on your PATH (optional):
+1. checks the requirements above (`herdr-machines check`), and fails if any is missing
+2. registers the herdr TUI popup
+3. copies the Herdr app dialog into `~/.config/herdr-app/mods/herdr-machines` (skipped when the app has no config folder yet, or with `HERDR_MACHINES_SKIP_APP_MOD=1`; a folder of that name you made yourself is left alone)
 
-```sh
-ln -s ~/code/herdr-remotes-management/bin/herdr-machines ~/.local/bin/herdr-machines
-```
+`herdr plugin install` shows the commands it will run before it runs them. `herdr plugin update` updates both front ends.
 
-### Node and version managers
-
-Nothing stores a node path from a version manager's per shell link (fnm's `fnm_multishells` folders disappear with the shell). `bin/run` picks node in this order:
-
-1. `$HERDR_MACHINES_NODE`
-2. the path `setup` saved (the real installation folder)
-3. `fnm exec --using=.node-version node`, when fnm is installed
-4. `node` on PATH
-
-### The herdr TUI popup
-
-```sh
-herdr plugin link ~/code/herdr-remotes-management
-```
-
-Then bind its action in herdr's `config.toml`:
+Then bind the popup to a key in herdr's `config.toml`:
 
 ```toml
 [[keys.command]]
@@ -65,22 +51,45 @@ command = "herdr-machines.open"
 description = "manage machines"
 ```
 
-`prefix+m` is free in herdr's defaults (0.9.5). The plugin itself changes no config and runs nothing in the background.
-
-### The Herdr app dialog
-
-```sh
-ln -s ~/code/herdr-remotes-management/app-mod ~/.config/herdr-app/mods/herdr-machines
-herdr-app check ~/.config/herdr-app/mods/herdr-machines
-```
-
-If the app doesn't pick up a linked folder, copy it instead (`cp -R app-mod ~/.config/herdr-app/mods/herdr-machines`) and copy again after updates.
-
-Open it with `mod.open herdr-machines` from the palette, or bind a key in `~/.config/herdr-app/keys.json`:
+`prefix+m` is free in herdr's defaults (0.9.5). In the Herdr app, open the dialog from the palette with `mod.open herdr-machines`, or bind a key in `~/.config/herdr-app/keys.json`:
 
 ```json
 { "global": { "cmd-shift-m": "mod.open:herdr-machines" } }
 ```
+
+### The CLI in your shell (optional)
+
+The popup and the dialog run the CLI from herdr's plugin folder. To use it from a terminal too, add this to your `.zshrc` or `.bashrc`:
+
+```sh
+herdr-machines() {
+  local root
+  root=$(herdr plugin list --json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const p=(JSON.parse(s).result?.plugins??[]).find(p=>p.plugin_id==="herdr-machines");if(p)console.log(p.plugin_root)})')
+  [ -n "$root" ] || { echo "herdr-machines: plugin not installed" >&2; return 1; }
+  sh "$root/bin/run" "$@"
+}
+```
+
+It looks the folder up each time, so it keeps working after `herdr plugin update`.
+
+### Uninstall
+
+```sh
+herdr plugin uninstall herdr-machines
+rm -rf ~/.config/herdr-app/mods/herdr-machines
+```
+
+Machines you added stay in `~/.ssh/config.d/herdr-machines`, herdr and the app. To remove the SSH side too, delete that file and the two lines this tool added at the top of `~/.ssh/config`.
+
+### Working on it
+
+```sh
+git clone https://github.com/maumercado/herdr-remotes-management.git ~/code/herdr-remotes-management
+herdr plugin link ~/code/herdr-remotes-management
+ln -s ~/code/herdr-remotes-management/app-mod ~/.config/herdr-app/mods/herdr-machines
+```
+
+`plugin link` doesn't run the build steps, so run `bin/herdr-machines check` yourself. The dialog finds the CLI through `herdr plugin list`, which points at the linked checkout.
 
 ## Using it
 
@@ -170,15 +179,16 @@ Exit codes: `0` done, `1` a step failed, `2` bad input, `3` a question came up w
 | Environment variable | Effect |
 |---|---|
 | `HERDR_MACHINES_HERDR`, `HERDR_MACHINES_HC`, `HERDR_MACHINES_SSH` | use these binaries |
-| `HERDR_MACHINES_NODE` | node for `bin/run` |
+| `HERDR_MACHINES_NODE` | node for `bin/run` (default: `node` on PATH) |
+| `HERDR_MACHINES_SKIP_APP_MOD=1` | `herdr plugin install` leaves the app mod out |
 | `HERDR_MACHINES_ALLOW_REPO=1` | allow the managed file inside a git repo |
 | `XDG_STATE_HOME` | where the state folder lives (default `~/.local/state`) |
 
 ## Troubleshooting
 
-- **The TUI or APP column is empty.** `herdr` or `hc` wasn't found or failed; `list` prints why. Run `setup` again.
+- **The TUI or APP column is empty.** `herdr` or `hc` wasn't found or failed; `list` prints why, and `herdr-machines check` shows what is on your PATH.
 - **"needs a terminal" (exit 3).** Run the same command in a terminal, or answer with the flag it names.
-- **The dialog says to run setup.** It reads `~/.local/state/herdr-machines/bins.json`; run `bin/herdr-machines setup`.
+- **The dialog says the plugin isn't installed.** It looks for `herdr-machines` in `herdr plugin list`; run `herdr plugin install maumercado/herdr-remotes-management`.
 - **"rolled back: HostName resolves to ..."**. Another `Host` block matched first. Run `doctor`, which reports aliases defined twice.
 - **A machine needs attention in herdr that isn't a login** (an outdated server, say). Run `herdr --remote <alias>` in a terminal outside herdr.
 
@@ -194,7 +204,8 @@ npm run typecheck   # fetches TypeScript on demand; nothing is added to package.
 | `src/` | the CLI (TypeScript, run directly by node) |
 | `src/ui/` | the herdr popup (state, keys, drawing, terminal loop) |
 | `app-mod/` | the Herdr app mod (JavaScript, gpui-kit) |
-| `herdr-plugin.toml` | the herdr plugin manifest |
+| `herdr-plugin.toml` | the herdr plugin manifest (build steps, popup, action) |
+| `bin/` | `run` (finds node), `herdr-machines` (the command), `install-app-mod` (build step) |
 | `test/` | tests, with fake `herdr`, `hc` and `ssh` in `test/fakes/` |
 | `docs/PLAN.md` | the design |
 | `TODO.md` | the checklist |

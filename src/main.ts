@@ -20,7 +20,7 @@ Usage:
   ${TOOL} delete <alias> [--ssh=keep|delete]
   ${TOOL} login <alias>
   ${TOOL} doctor [--fix]
-  ${TOOL} setup
+  ${TOOL} check
   ${TOOL} ui
   ${TOOL} help
 
@@ -137,8 +137,8 @@ export async function main(argv: string[]): Promise<number> {
       case "doctor":
         res = await cmd.doctor(ctx, { fix: v.fix });
         break;
-      case "setup":
-        res = await cmd.setup(ctx);
+      case "check":
+        res = await cmd.check(ctx);
         break;
       case "ui": {
         const { runUi } = await import("./ui/app.ts");

@@ -17,7 +17,6 @@ export interface Paths {
   stateDir: string;
   backupsDir: string;
   lockFile: string;
-  binsFile: string;
   lastFile: string;
 }
 
@@ -37,7 +36,6 @@ export function paths(env: NodeJS.ProcessEnv = process.env): Paths {
     stateDir,
     backupsDir: join(stateDir, "backups"),
     lockFile: join(stateDir, "lock"),
-    binsFile: join(stateDir, "bins.json"),
     lastFile: join(stateDir, "last.json"),
   };
 }

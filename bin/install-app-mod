@@ -1,0 +1,41 @@
+#!/bin/sh
+# Plugin build step: copies the Herdr app mod into the app's mods folder, so
+# `herdr plugin install` sets up both front ends. Runs again on every
+# `herdr plugin update`, replacing its own earlier copy.
+#
+# Skipped when the Herdr app has no config folder yet, or with
+# HERDR_MACHINES_SKIP_APP_MOD=1. A folder of the same name that this step did
+# not create (your own copy, or a link to a checkout) is left alone.
+set -eu
+root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+app="$HOME/.config/herdr-app"
+dest="$app/mods/herdr-machines"
+marker=".installed-by-herdr-plugin"
+
+if [ "${HERDR_MACHINES_SKIP_APP_MOD:-}" = 1 ]; then
+  echo "herdr-machines: HERDR_MACHINES_SKIP_APP_MOD=1, not installing the app mod"
+  exit 0
+fi
+if [ ! -d "$app" ]; then
+  echo "herdr-machines: no $app yet, so the app mod is not installed (open the Herdr app once, then run herdr plugin update)"
+  exit 0
+fi
+if [ -e "$dest" ] || [ -L "$dest" ]; then
+  if [ -L "$dest" ] || [ ! -f "$dest/$marker" ]; then
+    echo "herdr-machines: $dest exists and was not installed by this plugin, leaving it alone"
+    exit 0
+  fi
+fi
+
+mkdir -p "$app/mods"
+tmp="$app/mods/.herdr-machines.tmp.$$"
+rm -rf "$tmp"
+cp -R "$root/app-mod" "$tmp"
+echo "Installed by herdr plugin install. Delete this folder to remove the mod." >"$tmp/$marker"
+rm -rf "$dest"
+mv "$tmp" "$dest"
+echo "herdr-machines: app mod installed in $dest"
+
+if command -v herdr-app >/dev/null 2>&1; then
+  herdr-app check "$dest" || echo "herdr-machines: warning: herdr-app check reported problems with the mod" >&2
+fi

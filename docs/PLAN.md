@@ -15,11 +15,12 @@ The TUI and the app keep separate machine lists (different programs, different s
 ## Decisions already made
 
 - Language: TypeScript, run directly by Node (native type stripping: Node 22.18 or newer, 26 recommended; no build step, no runtime npm dependencies). Only erasable TS syntax: no enums, namespaces or parameter properties.
-- Node version: the repo pins Node 26 in `.node-version` (fnm, nvm and others read it). Version managers like fnm put `node` on PATH through a per-shell link that disappears with the shell, so nothing here stores that path: `setup` saves the resolved real path (fnm's installation folder), and the plugin and the app start through `bin/run`, which finds node in this order: `HERDR_MACHINES_NODE`, the path saved by `setup`, `fnm exec --using=.node-version node`, then `node` on PATH.
+- Install is one command, `herdr plugin install maumercado/herdr-remotes-management` (revised 2026-11-07, replacing a separate `setup` step). Requirements are Node 22.18 or newer, OpenSSH's `ssh`, `herdr` and `hc`, all found on PATH. The plugin's first build step runs `herdr-machines check`, which fails the install and lists what is missing. The second build step copies the app mod into `~/.config/herdr-app/mods/herdr-machines` (only its own earlier copy is ever replaced). No paths are saved anywhere: herdr starts plugin commands with your environment, the Herdr app starts programs with your login shell's PATH, and the app mod finds the CLI through `herdr plugin list --json` (`plugin_root`).
+- Node version: `bin/run` uses `HERDR_MACHINES_NODE`, else `node` on PATH when it is 22.18 or newer, else `fnm exec` with the repo's `.node-version` (26).
 - Source lives in `~/code/herdr-remotes-management` (GitHub: `herdr-remotes-management`, public). The herdr plugin is linked from there with `herdr plugin link`.
 - Generic by design: nothing personal in file names, ids, paths, config or defaults, so anyone can install it. The tool, CLI, plugin, app mod and state folder are all named `herdr-machines`. Personal wiring (a key binding, your own spaces mod) lives in your own config, not in this repo; the README shows examples.
 - SSH: machines this tool creates live in their own file, `~/.ssh/config.d/herdr-machines`, pulled in by one `Include` line at the very top of `~/.ssh/config`. Backup before every write, file mode `600`. Writes go through symlinks (dotfiles managed with Stow, chezmoi in symlink mode, yadm and similar) and never replace a symlink with a plain file.
-- State folder: `$XDG_STATE_HOME/herdr-machines/` (default `~/.local/state/herdr-machines/`) holds the "same as last time" values, backups, the lock file and resolved binary paths. Fixed path, so the TUI plugin and the app find the same files (`HERDR_PLUGIN_STATE_DIR` is only set when herdr runs the plugin).
+- State folder: `$XDG_STATE_HOME/herdr-machines/` (default `~/.local/state/herdr-machines/`) holds the "same as last time" values, backups and the lock file. Fixed path, so the TUI plugin and the app find the same files (`HERDR_PLUGIN_STATE_DIR` is only set when herdr runs the plugin).
 - Hosts already in `~/.ssh/config` (or any file it includes) stay where they are. `adopt` only registers them with herdr and hc; the tool shows them but never edits or deletes their SSH entries (change those by hand).
 - Delete: removing a machine always asks, every time, whether to delete its SSH entry too (managed machines only). Non-interactive callers answer with `--ssh=keep|delete`.
 - New machine form: user, port and key start blank, so SSH uses its own defaults (your local username, your default keys). A "same as last time" shortcut fills them from the previous add (kept in the state folder).
@@ -119,7 +120,7 @@ What the mod API allows (read from herdr-app `defaults/AGENTS.md` and `defaults/
 - Mods are JavaScript (gpui-kit), live in `~/.config/herdr-app/mods/<name>/` with `main.js` and `mod.json`, and reload on save. `mod.json` with `"place": "none"` and an `overlay` keeps the mod out of layouts and lets `mod.open <name>` open it as a dialog (the shipped `machine-add` mod works this way).
 - `mod.open` is an ordinary app command, so a key (`"cmd-shift-m": "mod.open:herdr-machines"` in `keys.json`), the palette and any mod (`run("mod.open", { name })`) can open the dialog.
 - Mods can't load other mods' code at run time. The state glyph helper is therefore a file to copy (`app-mod/glyphs.js`), not an import.
-- `exec` runs programs in the user's real environment. The mod still calls the CLI by the absolute path `setup` saves (`cli` in `bins.json`), and the CLI finds node through `bin/run`.
+- `exec` runs programs in the user's real environment (Finder launches load the login shell's PATH). The mod finds the CLI with `herdr plugin list --json` and runs `<plugin_root>/bin/herdr-machines`, which finds node through `bin/run`.
 - `terminal.open {argv, name}` opens a terminal in the focused space. A space on another machine would run it there, so the mod uses `space.new {machine: ""}` (this computer) when the focused space is remote.
 
 How the mod uses it:
@@ -151,7 +152,7 @@ How the mod uses it:
 - hc's first add may ask to copy hc to the remote; same handling as herdr's install prompt.
 - hc's reused connection would hold the old endpoint for up to 10 idle minutes after an edit; `edit` refreshes it (see "Connection reuse").
 - `~/.ssh/config` is often a symlink into a dotfiles repo (likely on your computer, which uses Stow); the tool must write through it and keep the managed file out of the repo.
-- The app's `exec` runs with a minimal PATH; absolute paths are required.
+- The app's `exec` gets the login shell's PATH (checked in herdr-app's docs). A PATH set only in `.zshrc` (not `.zprofile`) may still be missing there; `herdr-machines check` from the dialog would show it.
 - `herdr machine status --json` is a live check and slow with unreachable hosts.
 - I can't read `~/.ssh` from the session bridge (protected folder) or run `herdr` / `hc` there, so the end to end tests are run by you.
 - Sharing the glyph helper and "open dialog" action between mods depends on what the mod API allows (check `herdr.d.ts`). If mods can't call each other, the fallback is a registered command id that any mod or the palette can run, and the other mod reads `hc machine ls --json` itself.
@@ -165,10 +166,12 @@ None. Type checking (answered 2026-11-07): `npm run typecheck` runs `tsc --noEmi
 
 - Matching is by `target` only; label rename and hc name rename are separate commands; doctor ignores label differences.
 - Symlinked dotfiles: resolve real paths, write through symlinks, stop if the managed file would land in a git repo.
-- Backups, lock, last-used values and binary paths moved to the state folder.
+- Backups, lock and last-used values moved to the state folder.
 - App `exec`: absolute paths for `node`, `herdr`, `hc`.
 - Flags for every prompt (`--yes`, `--ssh=keep|delete`), exit codes, `--json` never prompts.
 - Testing on a throwaway VM instead of `localhost`.
+
+Third revision: install is just `herdr plugin install`. The `setup` command and its saved paths are gone; requirements are checked by a build step that fails the install, and the app mod is copied by another build step and finds the CLI through `herdr plugin list`.
 
 Second revision: generic naming. Everything is `herdr-machines` (CLI, plugin, app mod, state folder under `$XDG_STATE_HOME`); no key binding or other config is written; the spaces panel glyph became an exported helper that any mod can use, with the `mau-spaces` wiring kept outside the repo.
 - Health from `herdr machine status --json`, loaded after the list.

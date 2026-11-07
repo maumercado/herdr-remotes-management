@@ -40,11 +40,10 @@ const STUBS = {
   `,
   herdr: `
     const hm = () => globalThis.__hm;
-    export const exec = async (cmd, args) => { hm().execCalls.push([cmd, ...args]); return hm().exec(args); };
+    export const exec = async (cmd, args) => { hm().execCalls.push([cmd, ...args]); return cmd === "herdr" ? hm().herdr(args) : hm().exec(args); };
     export const hc = async () => ({ code: 0, stdout: '{"machines":[]}', stderr: "" });
     export const run = (name, args) => { hm().runs.push([name, args]); return null; };
     export const home = () => "/home/u";
-    export const readTextFile = async () => hm().bins;
     export const theme = () => new Proxy({}, { get: () => "#000000" });
     export const props = () => ({ overlay: "ov1" });
     export const closeOverlay = (id) => { hm().closed.push(id); return null; };
@@ -95,7 +94,11 @@ function setup(overrides: Record<string, unknown> = {}) {
     runs: [] as [string, unknown][],
     closed: [] as string[],
     spaces: [{ active: true, machine: null }] as { active: boolean; machine: string | null }[],
-    bins: JSON.stringify({ cli: "/repo/bin/herdr-machines" }),
+    plugins: [{ plugin_id: "herdr-machines", plugin_root: "/repo" }] as { plugin_id: string; plugin_root: string }[],
+    herdr(args: string[]) {
+      if (args.join(" ") !== "plugin list --json") return { code: 1, stdout: "", stderr: "unexpected" };
+      return { code: 0, stdout: JSON.stringify({ id: "cli:plugin", result: { type: "plugin_list", plugins: this.plugins } }), stderr: "" };
+    },
     exec: (args: string[]) => (args[0] === "list" ? { code: 0, stdout: JSON.stringify(LIST), stderr: "" } : { code: 0, stdout: "ssh ✓  tui ✓  app ✓\n", stderr: "" }),
     ...overrides,
   };
@@ -126,13 +129,15 @@ test("loads machines and adopt candidates, and draws every mode", async () => {
   view.render();
 });
 
-test("without bins.json it says to run setup", async () => {
+test("finds the CLI through herdr's plugin list, and says how to install when it's missing", async () => {
   const mod = await loadMod();
-  const { cx, settle } = setup({ bins: null });
+  assert.equal(mod.cliFromPluginList(JSON.stringify({ result: { plugins: [{ plugin_id: "other", plugin_root: "/x" }, { plugin_id: "herdr-machines", plugin_root: "/p/1" }] } })), "/p/1/bin/herdr-machines");
+  assert.equal(mod.cliFromPluginList("not json"), null);
+  const { cx, settle } = setup({ plugins: [] });
   const view = new mod.default();
   view.init({}, cx);
   await settle();
-  assert.match(view.error, /herdr-machines setup/);
+  assert.match(view.error, /herdr plugin install maumercado\/herdr-remotes-management/);
   view.render();
 });
 

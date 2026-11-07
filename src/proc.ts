@@ -2,9 +2,9 @@
 // interactive (they share our terminal and can ask you things).
 
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { accessSync, constants, statSync } from "node:fs";
+import { delimiter, join } from "node:path";
 import type { Paths } from "./env.ts";
-import { readJson, writeJson } from "./fsx.ts";
 
 export interface RunResult {
   code: number;
@@ -75,41 +75,33 @@ export interface Bins {
   herdr: string;
   hc: string;
   ssh: string;
-  node?: string;
-  /** Absolute path of bin/herdr-machines, saved by `setup` for the app mod. */
-  cli?: string;
 }
 
 /**
- * Environment overrides win, then paths saved by `setup`, then plain names on
- * PATH. herdr also honours HERDR_BIN_PATH, which herdr sets for plugins.
+ * Environment overrides win, then plain names on PATH. herdr also honours
+ * HERDR_BIN_PATH, which herdr sets for plugin commands.
  */
-export function resolveBins(p: Paths, env: NodeJS.ProcessEnv = process.env): Bins {
-  const saved = readJson<Partial<Bins>>(p.binsFile, {});
-  const usable = (path: string | undefined) => (path && existsSync(path) ? path : undefined);
+export function resolveBins(_p: Paths, env: NodeJS.ProcessEnv = process.env): Bins {
   return {
-    herdr: env.HERDR_MACHINES_HERDR || env.HERDR_BIN_PATH || usable(saved.herdr) || "herdr",
-    hc: env.HERDR_MACHINES_HC || usable(saved.hc) || "hc",
-    ssh: env.HERDR_MACHINES_SSH || usable(saved.ssh) || "ssh",
-    node: usable(saved.node),
+    herdr: env.HERDR_MACHINES_HERDR || env.HERDR_BIN_PATH || "herdr",
+    hc: env.HERDR_MACHINES_HC || "hc",
+    ssh: env.HERDR_MACHINES_SSH || "ssh",
   };
 }
 
-/** Asks your login shell where a command lives. Apps started from the GUI do not get that PATH. */
-export function locateInLoginShell(name: string, env: NodeJS.ProcessEnv = process.env): string | undefined {
-  const shell = env.SHELL || "/bin/sh";
-  for (const flags of ["-lc", "-ilc"]) {
-    const r = run(shell, [flags, `command -v ${name}`], 5_000);
-    const found = r.stdout
-      .split("\n")
-      .map((l) => l.trim())
-      .filter((l) => l.startsWith("/"))
-      .pop();
-    if (r.code === 0 && found) return found;
+/** Where a command would run from: an absolute path, or the first match on PATH. */
+export function findExecutable(bin: string, env: NodeJS.ProcessEnv = process.env): string | undefined {
+  const runnable = (path: string) => {
+    try {
+      accessSync(path, constants.X_OK);
+      return statSync(path).isFile();
+    } catch {
+      return false;
+    }
+  };
+  if (bin.includes("/")) return runnable(bin) ? bin : undefined;
+  for (const dir of (env.PATH ?? "").split(delimiter)) {
+    if (dir && runnable(join(dir, bin))) return join(dir, bin);
   }
   return undefined;
-}
-
-export function saveBins(p: Paths, bins: Partial<Bins>): void {
-  writeJson(p.binsFile, bins);
 }

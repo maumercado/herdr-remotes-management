@@ -1,4 +1,6 @@
-# herdr plugin manifest. Link this folder with:
+# herdr plugin manifest. Install with:
+#   herdr plugin install maumercado/herdr-remotes-management
+# or, from a checkout you are working on:
 #   herdr plugin link /path/to/herdr-remotes-management
 id = "herdr-machines"
 name = "Machines"
@@ -6,6 +8,14 @@ version = "0.1.0"
 min_herdr_version = "0.9.5"
 description = "Add, edit, rename and delete SSH machines once for ~/.ssh/config, the herdr TUI and the Herdr app"
 platforms = ["linux", "macos"]
+
+# Install fails here when Node 22.18+, ssh, herdr or hc is missing.
+[[build]]
+command = ["sh", "bin/run", "check"]
+
+# Copies the Herdr app mod into ~/.config/herdr-app/mods/herdr-machines.
+[[build]]
+command = ["sh", "bin/install-app-mod"]
 
 # The manager itself: a popup running the CLI's terminal UI.
 [[panes]]
