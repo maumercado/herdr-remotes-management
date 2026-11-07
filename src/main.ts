@@ -18,6 +18,7 @@ Usage:
   ${TOOL} edit <alias> [--host H] [--user U] [--port P] [--key PATH] [--jump J] [--reconnect]
   ${TOOL} rename <alias> (--label L | --hc-name N | --alias A)
   ${TOOL} delete <alias> [--ssh=keep|delete]
+  ${TOOL} login <alias>
   ${TOOL} doctor [--fix]
   ${TOOL} setup
   ${TOOL} ui
@@ -130,6 +131,9 @@ export async function main(argv: string[]): Promise<number> {
         res = await cmd.remove(ctx, one(rest, "an alias"), { ssh });
         break;
       }
+      case "login":
+        res = await cmd.login(ctx, one(rest, "an alias"));
+        break;
       case "doctor":
         res = await cmd.doctor(ctx, { fix: v.fix });
         break;

@@ -52,14 +52,16 @@ Rules:
 
 ## 2. TUI popup (herdr plugin)
 
-- [ ] `herdr-plugin.toml`: id `herdr-machines`, one popup pane, one action, linux and macos, no hooks
-- [ ] ANSI screen: list with `SSH  TUI  APP` columns and glyphs, details pane, single pane under 76 columns
-- [ ] Health fills in after the first render
-- [ ] Add and edit form (alias, host, user, port, key path, jump host; last time shortcut)
-- [ ] Keys: `a` `A` `e` `r` `d` `s` `l` `/` `q`, confirm boxes for delete and alias rename
-- [ ] Interactive steps leave raw mode and the alternate screen, then restore and redraw
-- [ ] Tests for the pure parts (layout, key handling, form state)
-- [ ] README: link the plugin, example key binding
+- [x] `herdr-plugin.toml`: id `herdr-machines`, one popup pane, one action, linux and macos, no hooks
+- [x] ANSI screen: list with `SSH  TUI  APP` columns and glyphs, details pane, single pane under 76 columns
+- [x] Health fills in after the first render
+- [x] Add and edit form (alias, host, user, port, key path, jump host; last time shortcut)
+- [x] Keys: `a` `A` `e` `r` `d` `s` `l` `/` `q`, confirm boxes for delete and alias rename
+- [x] Interactive steps leave raw mode and the alternate screen, then restore and redraw
+- [x] Tests for the pure parts (layout, key handling, form state)
+- [x] Smoke run in a pseudo terminal against the fakes (add from the popup, back to the list, quit)
+- [x] `login <alias>` command in the CLI for the `l` key (herdr reconnect, hc login)
+- [ ] README: link the plugin, example key binding (written with the full README in step 4)
 
 ## 3. App mod (Herdr app)
 
@@ -80,6 +82,7 @@ Rules:
 ## 5. Real runs (on your computer)
 
 - [ ] `ls -la ~/.ssh ~/.ssh/config.d` and run `herdr-machines list`
+- [ ] `herdr plugin link` this folder, bind the action, open the popup inside herdr
 - [ ] Throwaway VM (OrbStack, Lima or UTM): add, edit port then reconnect, rename label, rename hc name, rename alias, delete
 - [ ] Adopt one existing host
 - [ ] One real machine end to end

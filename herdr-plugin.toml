@@ -1,0 +1,24 @@
+# herdr plugin manifest. Link this folder with:
+#   herdr plugin link /path/to/herdr-remotes-management
+id = "herdr-machines"
+name = "Machines"
+version = "0.1.0"
+min_herdr_version = "0.9.5"
+description = "Add, edit, rename and delete SSH machines once for ~/.ssh/config, the herdr TUI and the Herdr app"
+platforms = ["linux", "macos"]
+
+# The manager itself: a popup running the CLI's terminal UI.
+[[panes]]
+id = "manager"
+title = "Machines"
+placement = "popup"
+width = "90%"
+height = "80%"
+command = ["sh", "bin/run", "ui"]
+
+# An action you can bind to a key (see README): opens the popup.
+[[actions]]
+id = "open"
+title = "Manage machines"
+contexts = ["workspace"]
+command = ["sh", "-c", "exec \"${HERDR_BIN_PATH:-herdr}\" plugin pane open --plugin herdr-machines --entrypoint manager"]

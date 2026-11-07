@@ -476,6 +476,33 @@ export async function doctor(ctx: Ctx, opts: { fix?: boolean }): Promise<Command
 }
 
 // ---------------------------------------------------------------------------
+// login
+
+/**
+ * Logs in again where a login is needed: `herdr machine reconnect` and
+ * `hc machine login`. Both ask their questions in the terminal, so this needs one.
+ */
+export async function login(ctx: Ctx, alias: string): Promise<CommandResult> {
+  const state = loadState(ctx.p, ctx.bins);
+  const row = findRow(state, alias);
+  if (!row.tui && !row.app) throw new UsageError(`${alias} is not in herdr or the app`);
+  if (!ctx.interactive) throw new NeedsTerminal(`logging in to ${alias} asks for a password or code`);
+  const report = emptyReport();
+  const steps: Step[] = [];
+  if (row.tui && state.herdr.available) {
+    const id = row.tui.id;
+    steps.push({ side: "tui", title: `herdr machine reconnect ${alias}`, run: () => new Herdr(ctx.bins).reconnect(id) });
+  } else skip(report, "tui", "not there");
+  if (row.app && state.hc.available) {
+    const name = row.app.name;
+    steps.push({ side: "app", title: `hc machine login ${name}`, run: () => new Hc(ctx.bins).login(name) });
+  } else skip(report, "app", "not there");
+  skip(report, "ssh", "unchanged");
+  await runSteps(ctx, steps, report);
+  return result(report, { alias });
+}
+
+// ---------------------------------------------------------------------------
 // setup
 
 const MIN_NODE: [number, number] = [22, 18];
