@@ -117,6 +117,8 @@ Every command prints a step report, e.g. `ssh ✓  tui ✓  app ✕ (needs_login
 
 The plugin is for the herdr TUI only. The Herdr app keeps getting every change through `hc` when it is installed, but there is no app front end here: the app already ships its own machine dialog, and installing a mod from a herdr plugin needed link scripts and a startup hook. The dialog mod that was built for this (commit `55b752c`, `app-mod/`) lives on as a personal mod in your dotfiles: Stow package `herdr-app` (`~/.dotfiles/herdr-app/.config/herdr-app/mods/herdr-machines/`). It finds the CLI through `herdr plugin list --json` (`plugin_root`), so it keeps working with the installed plugin.
 
+Machine state in the sidebars (2026-11-07): your `mau-spaces` mod now draws a state glyph on each machine header (from the `hc machine ls` it already polls every 15 seconds) and a `⋯` button that runs `mod.open herdr-machines`. In the herdr TUI nothing is added: its sidebar already shows each machine's connection state (`endpoint_status_presentation` in `src/client/shell/endpoints.rs`), and a custom `$token` would need a reporter running all the time, which herdr's plugin model (one-shot startup hooks, no machine events) doesn't offer.
+
 ## Testing
 
 - Unit tests with `node --test`: SSH parser and writer (round trip, comments kept, Include placement, Include following, multi pattern and negated `Host` lines, wildcard blocks untouched, your own entries never written), symlink write-through (a symlinked config stays a symlink), the git repo check, alias validation and collision refusal, merge by target, step runner with undo, exit codes and flags (`--json` never prompts).
