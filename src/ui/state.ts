@@ -3,6 +3,7 @@
 
 import type { Key } from "./keys.ts";
 import type { RowView } from "../view.ts";
+import { parseRawTarget, suggestAlias } from "../view.ts";
 import { aliasProblem, hcNameProblem, portProblem } from "../tools.ts";
 
 export type Effect = { kind: "quit" } | { kind: "reload"; health: boolean } | { kind: "run"; args: string[] };
@@ -112,7 +113,7 @@ export function addForm(): Form {
   };
 }
 
-export function editForm(row: RowView): Form {
+export function editForm(row: RowView, taken: string[] = []): Form {
   const ssh = row.ssh ?? ({} as NonNullable<RowView["ssh"]>);
   const original: Record<string, string> = {};
   const fields = FIELD_LABELS.map(([id, label]) => {
@@ -123,9 +124,8 @@ export function editForm(row: RowView): Form {
   if (row.raw) {
     // A raw address (user@ip): it gets a name, an SSH entry with the new
     // address, and herdr and the app move onto that name.
-    const m = /^(?:ssh:\/\/)?(?:([^@]+)@)?([^:]+)(?::(\d+))?$/.exec(row.alias);
-    const prefill: Record<string, string> = { user: m?.[1] ?? "", port: m?.[3] ?? "" };
-    const named = [{ id: "alias", label: "Name", value: "", required: true }];
+    const prefill: Record<string, string> = parseRawTarget(row.alias) as Record<string, string>;
+    const named = [{ id: "alias", label: "Name", value: suggestAlias(row, taken), required: true }];
     const rest = FIELD_LABELS.map(([id, label]) => ({ id, label, value: prefill[id] ?? "", required: id === "host" }));
     return { kind: "edit", title: `Move ${row.alias} to a name you can edit`, focus: 0, alias: row.alias, original: {}, fields: [...named, ...rest] };
   }
@@ -366,7 +366,7 @@ export function reduce(s0: UiState, key: Key): { s: UiState; effect?: Effect } {
   switch (key.char) {
     case "e":
       if (row.ssh && row.ssh.kind !== "managed") return { s: { ...s, message: `${row.alias} is your own entry in ${row.ssh.file}; edit it by hand` } };
-      return { s: { ...s, mode: "form", form: editForm(row) } };
+      return { s: { ...s, mode: "form", form: editForm(row, [...s.machines, ...s.candidates].flatMap((r) => (r.raw ? [] : [r.alias]))) } };
     case "r":
       return renamePicker(s, row);
     case "d":

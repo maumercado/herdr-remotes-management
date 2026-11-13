@@ -8,6 +8,7 @@ import { fit, render, WIDE_MIN } from "../src/ui/render.ts";
 import type { Effect, UiState } from "../src/ui/state.ts";
 import { initialState, reduce, visible, withData } from "../src/ui/state.ts";
 import type { RowView } from "../src/view.ts";
+import { parseRawTarget, suggestAlias } from "../src/view.ts";
 import { ROOT } from "./helpers.ts";
 
 function row(alias: string, extra: Partial<RowView> = {}): RowView {
@@ -115,8 +116,11 @@ test("edit opens for a machine without an SSH entry, and for a raw address", () 
   const raw = withData(initialState(), [row("root@192.0.2.7", { raw: true, ssh: null })], []);
   ({ s } = press(raw, "e"));
   assert.equal(s.mode, "form");
-  assert.equal(s.form!.fields.find((f) => f.id === "user")!.value, "root", "the user comes from the old address");
-  ({ s, effects } = press(s, "box7", { name: "tab" }, "192.0.2.8", { name: "ctrl", char: "s" }));
+  const field = (id: string) => s.form!.fields.find((f) => f.id === id)!.value;
+  assert.equal(field("user"), "root", "the user comes from the old address");
+  assert.equal(field("host"), "192.0.2.7", "and so does the host");
+  assert.equal(field("alias"), "machine", "addresses are never suggested as names");
+  ({ s, effects } = press(s, { name: "ctrl", char: "u" }, "box7", { name: "tab" }, { name: "ctrl", char: "u" }, "192.0.2.8", { name: "ctrl", char: "s" }));
   assert.deepEqual(effects, [{ kind: "run", args: ["edit", "root@192.0.2.7", "--alias", "box7", "--host", "192.0.2.8", "--user", "root"] }]);
 });
 
@@ -188,4 +192,13 @@ test("plugin manifest uses a valid id and opens the popup through the CLI", () =
   assert.match(manifest, /command = \["sh", "bin\/run", "ui"\]/);
   assert.match(manifest, /--entrypoint manager/);
   assert.match(manifest, /^platforms = \["linux", "macos"\]$/m);
+});
+
+test("raw targets parse, and suggested names skip addresses and taken names", () => {
+  assert.deepEqual(parseRawTarget("maumercado@100.73.191.22"), { user: "maumercado", host: "100.73.191.22", port: undefined });
+  assert.deepEqual(parseRawTarget("ssh://root@[2001:db8::1]:2222"), { user: "root", host: "2001:db8::1", port: "2222" });
+  const r = row("maumercado@100.73.191.22", { raw: true, ssh: null, tui: null, app: { name: "100.73.191.22", host: "servicio", via: false, duplicates: 0 } });
+  assert.equal(suggestAlias(r, []), "servicio");
+  assert.equal(suggestAlias(r, ["servicio", "servicio-ts"]), "servicio-2");
+  assert.equal(suggestAlias({ ...r, app: { ...r.app!, host: undefined } }, []), "machine");
 });

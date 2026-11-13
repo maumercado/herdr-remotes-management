@@ -13,7 +13,7 @@ import { emptyReport, runSteps, skip } from "./steps.ts";
 import { aliasProblem, cleanHcName, Hc, hcNameProblem, Herdr, portProblem } from "./tools.ts";
 import { readJson, writeJson } from "./fsx.ts";
 import { findExecutable, run, runInteractive } from "./proc.ts";
-import { formatTable, stateView } from "./view.ts";
+import { formatTable, parseRawTarget, rowView, stateView, suggestAlias } from "./view.ts";
 
 export interface CommandResult {
   code: number;
@@ -266,15 +266,13 @@ export async function edit(ctx: Ctx, alias: string, changes: Fields, opts: { rec
 async function repoint(ctx: Ctx, state: State, row: Row, changes: Fields, aliasOpt: string | undefined): Promise<CommandResult> {
   if (row.app?.via) throw new UsageError(`${row.alias} is reached through a command (hc --via), not ssh; change it with hc`);
   if (!changes.host) throw new UsageError(`${row.alias} uses a raw address; give the new address with --host (and a name for it with --alias)`);
-  const parsed = /^(?:ssh:\/\/)?(?:([^@]+)@)?([^:]+)(?::(\d+))?$/.exec(row.alias);
-  const fields: Fields = { user: parsed?.[1], port: parsed?.[3] };
+  const parsed = parseRawTarget(row.alias);
+  const fields: Fields = { user: parsed.user, port: parsed.port };
   for (const k of Object.keys(changes) as (keyof Fields)[]) {
     if (changes[k] !== undefined) fields[k] = changes[k] === "" ? undefined : changes[k];
   }
   const sshHost = (n: string) => state.rows.find((r) => r.alias === n && r.ssh)?.ssh;
-  const suggestion = [row.app?.host, row.app?.name, row.tui?.label].find((n) => n && !/^[\d.]+$/.test(n) && !aliasProblem(n) && !sshHost(n));
-  const alias = aliasOpt ?? suggestion;
-  if (!alias) throw new UsageError(`pick a name for ${row.alias} with --alias (a short name you'd type after ssh)`);
+  const alias = aliasOpt ?? suggestAlias(rowView(row), state.rows.filter((r) => !r.raw).map((r) => r.alias));
   const bad = aliasProblem(alias);
   if (bad) throw new UsageError(bad);
   const taken = sshHost(alias);

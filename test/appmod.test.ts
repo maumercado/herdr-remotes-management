@@ -185,8 +185,10 @@ test("edit is open for app-added raw machines and for machines without an entry,
   const view = new mod.default();
   view.init({}, cx);
   await settle();
-  view.openForm("edit", { alias: "maumercado@100.73.191.22", raw: true, ssh: null }, cx);
+  view.openForm("edit", { alias: "maumercado@100.73.191.22", raw: true, ssh: null, app: { name: "100.73.191.22", host: "box1" } }, cx);
   assert.equal(view.form.fields[0].id, "alias");
+  assert.equal(view.form.fields[0].value, "box1-2", "the remote's own name, made free: box1 is already a machine");
+  assert.equal(view.form.fields.find((f: any) => f.id === "host").value, "100.73.191.22");
   assert.equal(view.form.fields.find((f: any) => f.id === "user").value, "maumercado");
   view.render();
   view.form.fields[0].state.set("servicio-new");

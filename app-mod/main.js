@@ -71,6 +71,22 @@ export function formArgs(form) {
   return args.length === fixed ? "Nothing changed" : args;
 }
 
+/** user, host and port from a raw target such as `user@1.2.3.4:2222`. */
+export function parseRawTarget(target) {
+  const m = /^(?:ssh:\/\/)?(?:([^@]+)@)?(\[[^\]]+\]|[^:]+)(?::(\d+))?$/.exec(target ?? "");
+  return m ? { user: m[1], host: m[2]?.replace(/^\[|\]$/g, ""), port: m[3] } : {};
+}
+
+/** A free name for a raw-address machine: the remote's own name, its label or app name, with -2, -3... when taken. */
+export function suggestAlias(m, taken) {
+  const used = new Set(taken);
+  const looksLikeAddress = (n) => n.includes("@") || n.includes(":") || /^[\d.]+$/.test(n);
+  const clean = (n) => n.toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^[^a-z0-9]+|[-.]+$/g, "").slice(0, 28);
+  const base = [m.app?.host, m.tui?.label, m.app?.name].filter((n) => n && !looksLikeAddress(n)).map(clean).find(Boolean) || "machine";
+  if (!used.has(base)) return base;
+  for (let i = 2; ; i++) if (!used.has(`${base}-${i}`)) return `${base}-${i}`;
+}
+
 /** Why a machine can't be edited here, or null when it can. */
 export function editBlocker(m) {
   if (m.app?.via) return "reached through a command, change it with hc";
@@ -196,10 +212,11 @@ export default class Machines extends View {
     // A machine added with a raw address (user@ip, like the app's own Add
     // machine makes) gets a name and an SSH entry; it moves onto that name.
     const raw = kind === "edit" && row.raw;
-    const parsed = raw ? /^(?:ssh:\/\/)?(?:([^@]+)@)?([^:]+)(?::(\d+))?$/.exec(row.alias) : null;
-    if (kind === "add" || raw) add("alias", raw ? "Name" : "Alias", "");
+    const parsed = raw ? parseRawTarget(row.alias) : {};
+    const taken = [...(this.machines ?? []), ...this.candidates].filter((r) => !r.raw).map((r) => r.alias);
+    if (kind === "add" || raw) add("alias", raw ? "Name" : "Alias", raw ? suggestAlias(row, taken) : "");
     for (const [id, label] of FIELDS) {
-      const value = raw ? ({ user: parsed?.[1], port: parsed?.[3] }[id] ?? "") : kind === "edit" ? (row.ssh?.[id] ?? "") : "";
+      const value = raw ? (parsed[id] ?? "") : kind === "edit" ? (row.ssh?.[id] ?? "") : "";
       original[id] = raw ? "" : value;
       add(id, label, value);
     }

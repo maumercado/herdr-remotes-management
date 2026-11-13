@@ -32,6 +32,8 @@ export interface RowView {
     session?: string | null;
     state?: string;
     version?: string;
+    /** The remote's own name for itself (hc's `host`), e.g. its hostname. */
+    host?: string;
     why?: string | null;
     via: boolean;
     duplicates: number;
@@ -103,6 +105,7 @@ export function rowView(row: Row): RowView {
       session: row.app.session ?? null,
       state: row.app.state,
       version: row.app.version,
+      host: row.app.host || undefined,
       why: row.app.why ?? null,
       via: Boolean(row.app.via),
       duplicates: row.appExtra.length,
@@ -150,4 +153,25 @@ export function formatTable(state: State, all: boolean): string {
   if (!state.herdr.available) lines.push(`TUI column empty: ${state.herdr.reason}`);
   if (!state.hc.available) lines.push(`APP column empty: ${state.hc.reason}`);
   return lines.join("\n");
+}
+
+/** user, host and port from a raw target such as `user@1.2.3.4:2222` or `ssh://host`. */
+export function parseRawTarget(target: string): { user?: string; host?: string; port?: string } {
+  const m = /^(?:ssh:\/\/)?(?:([^@]+)@)?(\[[^\]]+\]|[^:]+)(?::(\d+))?$/.exec(target);
+  if (!m) return {};
+  return { user: m[1], host: m[2]?.replace(/^\[|\]$/g, ""), port: m[3] };
+}
+
+/**
+ * A name for a raw-address machine that isn't taken yet: the remote's own
+ * name (hc's host), else its herdr label or app name, else "machine", with
+ * -2, -3... added when that is already a Host or a machine.
+ */
+export function suggestAlias(row: RowView, taken: Iterable<string>): string {
+  const used = new Set(taken);
+  const clean = (n: string | undefined) => (n ?? "").toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^[^a-z0-9]+|[-.]+$/g, "").slice(0, 28);
+  const looksLikeAddress = (n: string) => n.includes("@") || n.includes(":") || /^[\d.]+$/.test(n);
+  const base = [row.app?.host, row.tui?.label, row.app?.name].filter((n): n is string => Boolean(n) && !looksLikeAddress(n!)).map(clean).find(Boolean) || "machine";
+  if (!used.has(base)) return base;
+  for (let i = 2; ; i++) if (!used.has(`${base}-${i}`)) return `${base}-${i}`;
 }

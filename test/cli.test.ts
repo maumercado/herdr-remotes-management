@@ -194,7 +194,6 @@ test("edit moves a raw-address app machine onto an alias, only once the new addr
   writeFileSync(join(sb.fake, "hc.json"), JSON.stringify([raw]));
 
   assert.equal(sb.run(["edit", "maumercado@100.73.191.22", "--port", "22", "--yes"]).code, 2, "needs the new address");
-  assert.match(sb.run(["edit", "maumercado@100.73.191.22", "--host", "100.80.0.5", "--yes"]).stderr, /--alias/, "servicio is taken and an IP is no name");
   assert.equal(sb.run(["edit", "maumercado@100.73.191.22", "--host", "100.80.0.5", "--alias", "servicio", "--yes"]).code, 2, "your own Host is never overwritten");
 
   // The new address doesn't answer: the entry is saved, the app keeps its machine.
