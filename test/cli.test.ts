@@ -146,6 +146,48 @@ test("edit changes the entry and refreshes the app's login after an endpoint cha
   assert.doesNotMatch(sb.read(MANAGED), /User admin/);
 });
 
+test("edit works while the machine is offline: the new address is written, the app is left to reconnect", () => {
+  const sb = sandbox();
+  sb.run(["add", "box", "--host", "1.2.3.4"], { FAKE_HC_STATE: "unreachable", FAKE_SSH_REACH: "0" });
+  const before = sb.calls().length;
+  const r = sb.run(["edit", "box", "--host", "10.0.0.9", "--json"], { FAKE_SSH_REACH: "255" });
+  assert.equal(r.code, 0, r.stderr + r.stdout);
+  assert.match(sb.read(MANAGED), /HostName 10\.0\.0\.9/);
+  assert.equal(r.json.report.sides.app.state, "skipped");
+  assert.match(r.json.report.sides.app.note, /on its own/);
+  assert.ok(!sb.calls().slice(before).some((c) => c.startsWith("hc machine rm")), "an offline app machine is never removed");
+  assert.equal(sb.hc().length, 1);
+});
+
+test("edit of a connected machine keeps it in the app when the new address doesn't answer", () => {
+  const sb = sandbox();
+  sb.run(["add", "box", "--host", "1.2.3.4"]);
+  const before = sb.calls().length;
+  const r = sb.run(["edit", "box", "--host", "10.0.0.9", "--yes", "--json"], { FAKE_SSH_REACH: "255" });
+  assert.equal(r.code, 0, "the address change itself succeeded");
+  assert.match(sb.read(MANAGED), /HostName 10\.0\.0\.9/, "and is kept");
+  assert.equal(r.json.report.sides.app.state, "failed");
+  assert.match(r.json.report.sides.app.note, /doesn't answer/);
+  assert.ok(!sb.calls().slice(before).some((c) => c.startsWith("hc machine rm")));
+  assert.equal(sb.hc().length, 1);
+});
+
+test("edit creates the SSH entry for a machine whose alias has none, and refuses raw addresses", () => {
+  const sb = sandbox();
+  writeFileSync(join(sb.fake, "herdr.json"), JSON.stringify([
+    { id: "p1", label: "nas", target: "nas", session: "default", enabled: true, selected: false },
+    { id: "p2", label: "raw", target: "root@192.0.2.7", session: "default", enabled: true, selected: false },
+  ]));
+  assert.equal(sb.run(["edit", "nas", "--port", "2222"]).code, 2, "a new entry needs a host");
+  const r = sb.run(["edit", "nas", "--host", "192.0.2.5", "--user", "admin", "--json"]);
+  assert.equal(r.code, 0, r.stderr + r.stdout);
+  assert.equal(r.json.created, true);
+  assert.match(sb.read(MANAGED), /Host nas\n  HostName 192\.0\.2\.5\n  User admin\n/);
+  const raw = sb.run(["edit", "root@192.0.2.7", "--host", "192.0.2.8"]);
+  assert.equal(raw.code, 2);
+  assert.match(raw.stderr, /raw address/);
+});
+
 test("edit without a terminal and without --yes stops at the question", () => {
   const sb = sandbox();
   sb.run(["add", "box", "--host", "1.2.3.4"]);

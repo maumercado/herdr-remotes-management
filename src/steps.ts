@@ -19,6 +19,12 @@ export interface Step {
   title: string;
   run: () => StepResult | Promise<StepResult>;
   undo?: () => StepResult | Promise<StepResult>;
+  /**
+   * A follow-up that the change doesn't depend on (a reconnect, say). When it
+   * fails, the report shows it and the run goes on: no retry or undo question,
+   * and the command still succeeds.
+   */
+  soft?: boolean;
 }
 
 export type SideState = "ok" | "failed" | "skipped" | "undone" | "untouched";
@@ -72,6 +78,11 @@ export async function runSteps(ctx: Ctx, steps: Step[], report = emptyReport(), 
       if (result.ok) {
         report.sides[step.side] = { state: "ok", note: result.reason };
         done.push(step);
+        break;
+      }
+      if (step.soft) {
+        report.sides[step.side] = { state: "failed", note: result.reason };
+        ctx.log(`✕ ${step.title}: ${result.reason ?? "failed"} (the change itself is kept)`);
         break;
       }
       report.sides[step.side] = { state: "failed", note: result.reason };

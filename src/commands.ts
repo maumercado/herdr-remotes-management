@@ -12,7 +12,7 @@ import type { Report, Step } from "./steps.ts";
 import { emptyReport, runSteps, skip } from "./steps.ts";
 import { aliasProblem, cleanHcName, Hc, hcNameProblem, Herdr, portProblem } from "./tools.ts";
 import { readJson, writeJson } from "./fsx.ts";
-import { findExecutable } from "./proc.ts";
+import { findExecutable, run } from "./proc.ts";
 import { formatTable, stateView } from "./view.ts";
 
 export interface CommandResult {
@@ -174,22 +174,33 @@ export async function edit(ctx: Ctx, alias: string, changes: Fields, opts: { rec
   }
   const state = loadState(ctx.p, ctx.bins);
   const row = findRow(state, alias);
-  if (!row.ssh) throw new UsageError(`${alias} has no SSH entry`);
-  if (!row.ssh.managed) throw new UsageError(`${alias} is in your own ${row.ssh.file}; edit that file by hand`);
+  if (row.raw) {
+    throw new UsageError(
+      `${alias} was added with a raw address, not an SSH alias, so there is no entry to edit. ` +
+        `Delete it and add it again with an alias; after that you can edit it, also while it's offline.`,
+    );
+  }
+  if (row.ssh && !row.ssh.managed) throw new UsageError(`${alias} is your own entry in ${row.ssh.file}:${row.ssh.line}; edit that file by hand`);
+  // herdr or the app use the alias, but no Host block defines it: editing
+  // creates the managed entry, which they pick up on their next connection.
+  const creating = !row.ssh;
+  if (creating && !changes.host) throw new UsageError(`${alias} has no SSH entry yet; give at least --host to create one`);
   const blockers = writeBlockers(ctx);
   if (blockers.length > 0) throw new UsageError(blockers.join("\n"));
 
-  const before = row.ssh.fields;
+  const before: Fields = row.ssh?.fields ?? {};
   const after: Fields = { ...before };
   for (const k of given) after[k] = changes[k] === "" ? undefined : changes[k];
-  const endpointChanged = ENDPOINT.some((k) => (before[k] ?? "") !== (after[k] ?? ""));
+  const endpointChanged = creating || ENDPOINT.some((k) => (before[k] ?? "") !== (after[k] ?? ""));
 
-  // Questions first, so the steps never stop halfway to ask.
+  // hc keeps a live ssh connection to the old address only while the machine
+  // is connected. Offline, it reconnects with the new address by itself.
+  const appConnected = row.app?.state === "connected";
   let refreshApp = false;
-  if (endpointChanged && row.app && state.hc.available) {
+  if (endpointChanged && row.app && appConnected && state.hc.available) {
     refreshApp = await confirm(
       ctx,
-      `The app keeps its ssh login to ${alias} for up to 10 idle minutes. Refresh it now (remove and add again, same name and session)?`,
+      `The app is connected to ${alias} and keeps that connection for up to 10 idle minutes. Refresh it now (remove and add again, same name and session)?`,
       true,
     );
   }
@@ -201,15 +212,20 @@ export async function edit(ctx: Ctx, alias: string, changes: Fields, opts: { rec
   const report = emptyReport();
   const steps: Step[] = [
     sshWriteStep(ctx, {
-      title: `update Host ${alias}`,
-      mutate: (current) => editManagedHost(current ?? "", alias, changes),
+      title: creating ? `write Host ${alias}` : `update Host ${alias}`,
+      mutate: (current) => (creating ? addManagedHost(current, alias, after) : editManagedHost(current ?? "", alias, changes)),
       expect: { alias, fields: after },
     }),
   ];
   if (reconnect && row.tui) {
     const herdr = new Herdr(ctx.bins);
     const id = row.tui.id;
-    steps.push({ side: "tui", title: `herdr machine reconnect ${alias}`, run: () => (ctx.interactive ? herdr.reconnect(id) : { ok: true, reason: "reconnects on its own" }) });
+    steps.push({
+      side: "tui",
+      title: `herdr machine reconnect ${alias}`,
+      soft: true,
+      run: () => (ctx.interactive ? herdr.reconnect(id) : { ok: true, reason: "reconnects on its own" }),
+    });
   } else skip(report, "tui", row.tui ? "picks it up on next connect" : "not there");
   if (refreshApp && row.app) {
     const hc = new Hc(ctx.bins);
@@ -217,16 +233,31 @@ export async function edit(ctx: Ctx, alias: string, changes: Fields, opts: { rec
     steps.push({
       side: "app",
       title: `refresh app login for ${alias}`,
+      soft: true,
       run: () => {
+        // Only drop the app's machine when the new address answers, so a
+        // wrong address never leaves the app without it.
+        const probe = run(ctx.bins.ssh, ["-o", "BatchMode=yes", "-o", "ConnectTimeout=5", alias, "true"], 20_000);
+        if (probe.code !== 0) {
+          return { ok: false, reason: "new address doesn't answer yet; the app keeps its old connection until it drops (up to 10 idle minutes)" };
+        }
         const rm = hc.rm(app.name);
         if (!rm.ok) return rm;
-        return hc.add(alias, app.name, app.session, ctx.interactive);
+        const add = hc.add(alias, app.name, app.session, ctx.interactive);
+        if (!add.ok) return { ok: false, reason: `removed from the app but adding it back failed (${add.reason ?? "error"}); run doctor` };
+        return add;
       },
     });
-  } else skip(report, "app", row.app ? (endpointChanged ? "old login may linger up to 10 idle minutes" : "no change needed") : "not there");
+  } else {
+    skip(
+      report,
+      "app",
+      !row.app ? "not there" : !endpointChanged ? "no change needed" : appConnected ? "old connection may linger up to 10 idle minutes" : "reconnects with the new address on its own",
+    );
+  }
 
   await runSteps(ctx, steps, report);
-  return result(report, { alias, endpointChanged });
+  return result(report, { alias, endpointChanged, created: creating });
 }
 
 // ---------------------------------------------------------------------------

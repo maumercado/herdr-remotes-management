@@ -92,3 +92,8 @@ Rules:
 - [ ] Adopt one existing host
 - [ ] One real machine end to end
 - [ ] Write any gotchas into docs/PLAN.md
+
+## 6. Fixes from use
+
+- [x] Edit an offline machine: the new address is kept, the app is only refreshed when it is connected and the new address answers, reconnects are follow-ups that never undo the change
+- [x] Edit a machine whose alias has no SSH entry: creates the managed entry; raw addresses get a clear message

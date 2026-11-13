@@ -113,14 +113,15 @@ export function addForm(): Form {
 }
 
 export function editForm(row: RowView): Form {
-  const ssh = row.ssh!;
+  const ssh = row.ssh ?? ({} as NonNullable<RowView["ssh"]>);
   const original: Record<string, string> = {};
   const fields = FIELD_LABELS.map(([id, label]) => {
     const value = (ssh[id as keyof typeof ssh] as string | undefined) ?? "";
     original[id] = value;
     return { id, label, value, required: id === "host" };
   });
-  return { kind: "edit", title: `Edit ${row.alias}`, focus: 0, alias: row.alias, original, fields };
+  const title = row.ssh ? `Edit ${row.alias}` : `Create the SSH entry for ${row.alias}`;
+  return { kind: "edit", title, focus: 0, alias: row.alias, original, fields };
 }
 
 function renameForm(row: RowView, kind: "label" | "hc-name" | "alias"): Form {
@@ -349,9 +350,8 @@ export function reduce(s0: UiState, key: Key): { s: UiState; effect?: Effect } {
   if (!row) return { s: { ...s, message: "No machine selected" } };
   switch (key.char) {
     case "e":
-      if (row.ssh?.kind !== "managed") {
-        return { s: { ...s, message: row.ssh ? `${row.alias} is your own entry in ${row.ssh.file}; edit it by hand` : `${row.alias} has no SSH entry` } };
-      }
+      if (row.raw) return { s: { ...s, message: `${row.alias} uses a raw address: delete it (d) and add it again with an alias (a) to edit it` } };
+      if (row.ssh && row.ssh.kind !== "managed") return { s: { ...s, message: `${row.alias} is your own entry in ${row.ssh.file}; edit it by hand` } };
       return { s: { ...s, mode: "form", form: editForm(row) } };
     case "r":
       return renamePicker(s, row);

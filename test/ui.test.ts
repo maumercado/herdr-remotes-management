@@ -104,6 +104,20 @@ test("edit refuses your own entries", () => {
   assert.match(s.message!, /edit it by hand/);
 });
 
+test("edit opens for a machine without an SSH entry, and explains raw addresses", () => {
+  const bare = withData(initialState(), [row("nas", { ssh: null, glyphs: { ssh: "○", tui: "●", app: "●" } })], []);
+  let { s, effects } = press(bare, "e");
+  assert.equal(s.mode, "form");
+  assert.match(s.form!.title, /Create the SSH entry/);
+  ({ s, effects } = press(s, "192.0.2.5", { name: "ctrl", char: "s" }));
+  assert.deepEqual(effects, [{ kind: "run", args: ["edit", "nas", "--host", "192.0.2.5"] }]);
+
+  const raw = withData(initialState(), [row("root@192.0.2.7", { raw: true, ssh: null })], []);
+  ({ s } = press(raw, "e"));
+  assert.equal(s.mode, "list");
+  assert.match(s.message!, /raw address/);
+});
+
 test("delete asks twice for a managed machine and passes the answers as flags", () => {
   let { s, effects } = press(start(), "d");
   assert.equal(s.mode, "confirm");

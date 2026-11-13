@@ -78,7 +78,7 @@ Press `prefix+m` in herdr. The popup lists your machines with their state in eac
 |---|---|
 | `a` | add a machine (alias and host are enough; user, port and key fall back to SSH's defaults, `Ctrl-L` fills them as last time) |
 | `A` | adopt a host you already have in `~/.ssh/config` (its entry is never edited) |
-| `e` | edit host, user, port, key or jump host (managed machines) |
+| `e` | edit host, user, port, key or jump host. Works while the machine is offline; for a machine whose alias has no SSH entry yet, it creates one |
 | `r` | rename: the herdr label, the app name, or the SSH alias |
 | `d` | delete from herdr and the app, then choose whether to delete the SSH entry |
 | `l` | log in again (herdr reconnect, hc login) |
