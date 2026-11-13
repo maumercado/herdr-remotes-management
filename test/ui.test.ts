@@ -104,7 +104,7 @@ test("edit refuses your own entries", () => {
   assert.match(s.message!, /edit it by hand/);
 });
 
-test("edit opens for a machine without an SSH entry, and explains raw addresses", () => {
+test("edit opens for a machine without an SSH entry, and for a raw address", () => {
   const bare = withData(initialState(), [row("nas", { ssh: null, glyphs: { ssh: "○", tui: "●", app: "●" } })], []);
   let { s, effects } = press(bare, "e");
   assert.equal(s.mode, "form");
@@ -114,8 +114,10 @@ test("edit opens for a machine without an SSH entry, and explains raw addresses"
 
   const raw = withData(initialState(), [row("root@192.0.2.7", { raw: true, ssh: null })], []);
   ({ s } = press(raw, "e"));
-  assert.equal(s.mode, "list");
-  assert.match(s.message!, /raw address/);
+  assert.equal(s.mode, "form");
+  assert.equal(s.form!.fields.find((f) => f.id === "user")!.value, "root", "the user comes from the old address");
+  ({ s, effects } = press(s, "box7", { name: "tab" }, "192.0.2.8", { name: "ctrl", char: "s" }));
+  assert.deepEqual(effects, [{ kind: "run", args: ["edit", "root@192.0.2.7", "--alias", "box7", "--host", "192.0.2.8", "--user", "root"] }]);
 });
 
 test("delete asks twice for a managed machine and passes the answers as flags", () => {

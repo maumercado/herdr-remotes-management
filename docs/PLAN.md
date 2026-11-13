@@ -159,6 +159,8 @@ None. Type checking (answered 2026-11-07): `npm run typecheck` runs `tsc --noEmi
 - Flags for every prompt (`--yes`, `--ssh=keep|delete`), exit codes, `--json` never prompts.
 - Testing on a throwaway VM instead of `localhost`.
 
+Fifth revision (2026-11-13): the Herdr app dialog is back in the plugin. Kept in the dotfiles, it fell behind the CLI and `herdr plugin update` never reached it. Edit now also covers machines added with the app's own Add machine (raw `user@ip` addresses): they get a name and a managed entry and move there once the new address answers.
+
 Fourth revision: the plugin is for the herdr TUI only and `hc` is optional. The app dialog mod moved out of the repo into your dotfiles; the CLI still syncs the app through `hc`.
 
 Third revision: install is just `herdr plugin install`. The app mod is a link to the plugin's folder, kept right by a build step and a startup hook that exits at once. The `setup` command and its saved paths are gone; requirements are checked by a build step that fails the install, and the app mod is copied by another build step and finds the CLI through `herdr plugin list`.

@@ -12,7 +12,7 @@ import type { Report, Step } from "./steps.ts";
 import { emptyReport, runSteps, skip } from "./steps.ts";
 import { aliasProblem, cleanHcName, Hc, hcNameProblem, Herdr, portProblem } from "./tools.ts";
 import { readJson, writeJson } from "./fsx.ts";
-import { findExecutable, run } from "./proc.ts";
+import { findExecutable, run, runInteractive } from "./proc.ts";
 import { formatTable, stateView } from "./view.ts";
 
 export interface CommandResult {
@@ -164,7 +164,7 @@ export async function adopt(ctx: Ctx, alias: string, opts: { hcName?: string; se
 
 const ENDPOINT: (keyof Fields)[] = ["host", "user", "port", "jump"];
 
-export async function edit(ctx: Ctx, alias: string, changes: Fields, opts: { reconnect?: boolean }): Promise<CommandResult> {
+export async function edit(ctx: Ctx, alias: string, changes: Fields, opts: { reconnect?: boolean; alias?: string }): Promise<CommandResult> {
   const given = (Object.keys(changes) as (keyof Fields)[]).filter((k) => changes[k] !== undefined);
   if (given.length === 0) throw new UsageError("nothing to change: pass --host, --user, --port, --key or --jump");
   if (changes.host === "") throw new UsageError("--host can't be empty");
@@ -174,12 +174,7 @@ export async function edit(ctx: Ctx, alias: string, changes: Fields, opts: { rec
   }
   const state = loadState(ctx.p, ctx.bins);
   const row = findRow(state, alias);
-  if (row.raw) {
-    throw new UsageError(
-      `${alias} was added with a raw address, not an SSH alias, so there is no entry to edit. ` +
-        `Delete it and add it again with an alias; after that you can edit it, also while it's offline.`,
-    );
-  }
+  if (row.raw) return repoint(ctx, state, row, changes, opts.alias);
   if (row.ssh && !row.ssh.managed) throw new UsageError(`${alias} is your own entry in ${row.ssh.file}:${row.ssh.line}; edit that file by hand`);
   // herdr or the app use the alias, but no Host block defines it: editing
   // creates the managed entry, which they pick up on their next connection.
@@ -258,6 +253,95 @@ export async function edit(ctx: Ctx, alias: string, changes: Fields, opts: { rec
 
   await runSteps(ctx, steps, report);
   return result(report, { alias, endpointChanged, created: creating });
+}
+
+/**
+ * A machine added with a raw address (`user@1.2.3.4`, for example from the
+ * Herdr app's own add dialog) has no SSH entry to edit. This gives it one: a
+ * managed Host block with the new address, then herdr and the app are moved
+ * onto that alias with the same name, label and session. Nothing is removed
+ * from herdr or the app until the new address answers, so an offline machine
+ * with a wrong old address is safe to fix.
+ */
+async function repoint(ctx: Ctx, state: State, row: Row, changes: Fields, aliasOpt: string | undefined): Promise<CommandResult> {
+  if (row.app?.via) throw new UsageError(`${row.alias} is reached through a command (hc --via), not ssh; change it with hc`);
+  if (!changes.host) throw new UsageError(`${row.alias} uses a raw address; give the new address with --host (and a name for it with --alias)`);
+  const parsed = /^(?:ssh:\/\/)?(?:([^@]+)@)?([^:]+)(?::(\d+))?$/.exec(row.alias);
+  const fields: Fields = { user: parsed?.[1], port: parsed?.[3] };
+  for (const k of Object.keys(changes) as (keyof Fields)[]) {
+    if (changes[k] !== undefined) fields[k] = changes[k] === "" ? undefined : changes[k];
+  }
+  const sshHost = (n: string) => state.rows.find((r) => r.alias === n && r.ssh)?.ssh;
+  const suggestion = [row.app?.host, row.app?.name, row.tui?.label].find((n) => n && !/^[\d.]+$/.test(n) && !aliasProblem(n) && !sshHost(n));
+  const alias = aliasOpt ?? suggestion;
+  if (!alias) throw new UsageError(`pick a name for ${row.alias} with --alias (a short name you'd type after ssh)`);
+  const bad = aliasProblem(alias);
+  if (bad) throw new UsageError(bad);
+  const taken = sshHost(alias);
+  if (taken && !taken.managed) throw new UsageError(`${alias} is already a Host in ${taken.file}:${taken.line}; pick another --alias`);
+  const reuse = state.rows.find((r) => r.alias === alias);
+  if (reuse && (reuse.tui || reuse.app)) throw new UsageError(`${alias} is already a machine here; pick another --alias`);
+  const update = Boolean(reuse?.ssh?.managed);
+  const blockers = writeBlockers(ctx);
+  if (blockers.length > 0) throw new UsageError(blockers.join("\n"));
+  if (row.tui && !ctx.interactive) throw new NeedsTerminal(`moving ${row.alias} in herdr runs herdr machine add, which may ask questions`);
+  if (!(await confirm(ctx, `Move ${row.alias} to the alias ${alias} (${[fields.user, fields.host].filter(Boolean).join("@")}${fields.port ? `:${fields.port}` : ""})? It is only removed from herdr and the app once the new address answers.`, true))) {
+    return { code: 1, text: "Nothing changed." };
+  }
+
+  const report = emptyReport();
+  const app = row.app;
+  const tui = row.tui;
+  const steps: Step[] = [
+    sshWriteStep(ctx, {
+      title: `${update ? "update" : "write"} Host ${alias}`,
+      mutate: (current) => (update ? editManagedHost(current ?? "", alias, { host: "", user: "", port: "", key: "", jump: "", ...fields }) : addManagedHost(current, alias, fields)),
+      expect: { alias, fields },
+    }),
+    {
+      side: "ssh",
+      title: `check ${alias} answers`,
+      run: () => {
+        const probe = run(ctx.bins.ssh, ["-o", "BatchMode=yes", "-o", "ConnectTimeout=5", alias, "true"], 20_000);
+        if (probe.code === 0) return { ok: true };
+        if (!ctx.interactive) return { ok: false, reason: `${alias} doesn't answer yet; the entry is saved, run this edit again once it does`, code: 1 };
+        ctx.log(`${alias} needs an answer or doesn't answer. Trying once here so you can reply:`);
+        const code = runInteractive(ctx.bins.ssh, [alias, "true"]);
+        return code === 0 ? { ok: true, reason: "logged in" } : { ok: false, reason: `${alias} doesn't answer (exit ${code}); the entry is saved, run this edit again once it does` };
+      },
+    },
+  ];
+  if (tui && state.herdr.available) {
+    const herdr = new Herdr(ctx.bins);
+    steps.push({
+      side: "tui",
+      title: `move herdr's ${tui.label} to ${alias}`,
+      run: () => {
+        const rm = herdr.remove(tui.id);
+        if (!rm.ok) return rm;
+        return herdr.add(alias, tui.label, tui.session ?? undefined, ctx.interactive);
+      },
+    });
+  } else skip(report, "tui", "not there");
+  if (app && state.hc.available) {
+    const hc = new Hc(ctx.bins);
+    steps.push({
+      side: "app",
+      title: `move the app's ${app.name} to ${alias}`,
+      run: () => {
+        const rm = hc.rm(app.name);
+        if (!rm.ok) return rm;
+        const add = hc.add(alias, app.name, app.session, ctx.interactive);
+        if (!add.ok) return { ok: false, reason: `removed ${app.name} but adding it back failed (${add.reason ?? "error"}); run: hc machine add ${alias} --name ${app.name}` };
+        return add;
+      },
+    });
+  } else skip(report, "app", "not there");
+
+  // Unattended runs never undo here: the SSH entry is the fix, and a failed
+  // check must not take it away. In a terminal you still get the choice.
+  await runSteps(ctx, steps, report, ctx.onFail === "undo" ? "leave" : ctx.onFail);
+  return result(report, { alias, from: row.alias, created: !update });
 }
 
 // ---------------------------------------------------------------------------

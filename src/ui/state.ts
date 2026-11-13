@@ -120,6 +120,15 @@ export function editForm(row: RowView): Form {
     original[id] = value;
     return { id, label, value, required: id === "host" };
   });
+  if (row.raw) {
+    // A raw address (user@ip): it gets a name, an SSH entry with the new
+    // address, and herdr and the app move onto that name.
+    const m = /^(?:ssh:\/\/)?(?:([^@]+)@)?([^:]+)(?::(\d+))?$/.exec(row.alias);
+    const prefill: Record<string, string> = { user: m?.[1] ?? "", port: m?.[3] ?? "" };
+    const named = [{ id: "alias", label: "Name", value: "", required: true }];
+    const rest = FIELD_LABELS.map(([id, label]) => ({ id, label, value: prefill[id] ?? "", required: id === "host" }));
+    return { kind: "edit", title: `Move ${row.alias} to a name you can edit`, focus: 0, alias: row.alias, original: {}, fields: [...named, ...rest] };
+  }
   const title = row.ssh ? `Edit ${row.alias}` : `Create the SSH entry for ${row.alias}`;
   return { kind: "edit", title, focus: 0, alias: row.alias, original, fields };
 }
@@ -155,11 +164,17 @@ export function submitForm(form: Form): Next | { error: string } {
   }
   if (form.kind === "edit") {
     const args = ["edit", form.alias!];
+    const name = value(form, "alias");
+    if (form.fields.some((f) => f.id === "alias")) {
+      const bad = aliasProblem(name);
+      if (bad) return { error: bad };
+      args.push("--alias", name);
+    }
     for (const [id] of FIELD_LABELS) {
       const v = value(form, id);
       if (v !== (form.original?.[id] ?? "")) args.push(`--${id}`, v);
     }
-    if (args.length === 2) return { error: "Nothing changed" };
+    if (args.length === 2 || (args.length === 4 && args[2] === "--alias")) return { error: "Nothing changed" };
     return { effect: { kind: "run", args } };
   }
   const next = value(form, "value");
@@ -350,7 +365,6 @@ export function reduce(s0: UiState, key: Key): { s: UiState; effect?: Effect } {
   if (!row) return { s: { ...s, message: "No machine selected" } };
   switch (key.char) {
     case "e":
-      if (row.raw) return { s: { ...s, message: `${row.alias} uses a raw address: delete it (d) and add it again with an alias (a) to edit it` } };
       if (row.ssh && row.ssh.kind !== "managed") return { s: { ...s, message: `${row.alias} is your own entry in ${row.ssh.file}; edit it by hand` } };
       return { s: { ...s, mode: "form", form: editForm(row) } };
     case "r":

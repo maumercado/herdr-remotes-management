@@ -16,6 +16,7 @@ Usage:
   ${TOOL} add <alias> --host H [--user U] [--port P] [--key PATH] [--jump J] [--session S] [--same-as-last]
   ${TOOL} adopt <alias> [--hc-name N] [--session S]
   ${TOOL} edit <alias> [--host H] [--user U] [--port P] [--key PATH] [--jump J] [--reconnect]
+      (a machine added with a raw address: --host H [--alias NAME] gives it an SSH entry and moves it there)
   ${TOOL} rename <alias> (--label L | --hc-name N | --alias A)
   ${TOOL} delete <alias> [--ssh=keep|delete]
   ${TOOL} login <alias>
@@ -119,7 +120,7 @@ export async function main(argv: string[]): Promise<number> {
         res = await cmd.adopt(ctx, one(rest, "an alias"), { hcName: v["hc-name"], session: v.session });
         break;
       case "edit":
-        res = await cmd.edit(ctx, one(rest, "an alias"), { host: v.host, user: v.user, port: v.port, key: v.key, jump: v.jump }, { reconnect: v.reconnect });
+        res = await cmd.edit(ctx, one(rest, "an alias"), { host: v.host, user: v.user, port: v.port, key: v.key, jump: v.jump }, { reconnect: v.reconnect, alias: v.alias });
         break;
       case "rename":
         res = await cmd.rename(ctx, one(rest, "an alias"), { label: v.label, hcName: v["hc-name"], alias: v.alias });

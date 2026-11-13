@@ -97,3 +97,6 @@ Rules:
 
 - [x] Edit an offline machine: the new address is kept, the app is only refreshed when it is connected and the new address answers, reconnects are follow-ups that never undo the change
 - [x] Edit a machine whose alias has no SSH entry: creates the managed entry; raw addresses get a clear message
+- [x] Edit a machine added with a raw address (the Herdr app's own Add machine): gives it a name and a managed entry, moves herdr and the app there (same app name, label and session) only once the new address answers
+- [x] The Herdr app dialog is back in the plugin (`app-mod/`, linked by the build step and a startup hook), so `herdr plugin update` updates it; Edit is open for raw and entry-less machines
+- [ ] On your computer: `stow -D herdr-app` in `~/.dotfiles` (the dotfiles copy is replaced by the plugin's), `herdr plugin update herdr-machines`, then fix the `100.73.191.22` machine from the dialog

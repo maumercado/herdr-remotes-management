@@ -172,7 +172,7 @@ test("edit of a connected machine keeps it in the app when the new address doesn
   assert.equal(sb.hc().length, 1);
 });
 
-test("edit creates the SSH entry for a machine whose alias has none, and refuses raw addresses", () => {
+test("edit creates the SSH entry for a machine whose alias has none", () => {
   const sb = sandbox();
   writeFileSync(join(sb.fake, "herdr.json"), JSON.stringify([
     { id: "p1", label: "nas", target: "nas", session: "default", enabled: true, selected: false },
@@ -183,9 +183,31 @@ test("edit creates the SSH entry for a machine whose alias has none, and refuses
   assert.equal(r.code, 0, r.stderr + r.stdout);
   assert.equal(r.json.created, true);
   assert.match(sb.read(MANAGED), /Host nas\n  HostName 192\.0\.2\.5\n  User admin\n/);
-  const raw = sb.run(["edit", "root@192.0.2.7", "--host", "192.0.2.8"]);
-  assert.equal(raw.code, 2);
-  assert.match(raw.stderr, /raw address/);
+  const raw = sb.run(["edit", "root@192.0.2.7", "--host", "192.0.2.8", "--alias", "box7"]);
+  assert.equal(raw.code, 3, "moving a herdr profile runs herdr machine add, which needs a terminal");
+});
+
+test("edit moves a raw-address app machine onto an alias, only once the new address answers", () => {
+  const sb = sandbox();
+  sb.write(".ssh/config", "Host servicio\n  HostName 192.168.0.18\n");
+  const raw = { name: "100.73.191.22", target: "maumercado@100.73.191.22", via: false, temporary: false, session: null, id: "c1", host: "servicio", version: "0.1.18", state: "unreachable", since_ms: 0, why: "timeout" };
+  writeFileSync(join(sb.fake, "hc.json"), JSON.stringify([raw]));
+
+  assert.equal(sb.run(["edit", "maumercado@100.73.191.22", "--port", "22", "--yes"]).code, 2, "needs the new address");
+  assert.match(sb.run(["edit", "maumercado@100.73.191.22", "--host", "100.80.0.5", "--yes"]).stderr, /--alias/, "servicio is taken and an IP is no name");
+  assert.equal(sb.run(["edit", "maumercado@100.73.191.22", "--host", "100.80.0.5", "--alias", "servicio", "--yes"]).code, 2, "your own Host is never overwritten");
+
+  // The new address doesn't answer: the entry is saved, the app keeps its machine.
+  let r = sb.run(["edit", "maumercado@100.73.191.22", "--host", "100.80.0.5", "--alias", "servicio-new", "--yes", "--json"], { FAKE_SSH_REACH: "255" });
+  assert.equal(r.code, 1);
+  assert.match(sb.read(MANAGED), /Host servicio-new\n  HostName 100\.80\.0\.5\n  User maumercado\n/);
+  assert.deepEqual(sb.hc().map((m: { name: string }) => m.name), ["100.73.191.22"]);
+
+  // Once it answers, the same edit finishes the move, keeping the app's name.
+  r = sb.run(["edit", "maumercado@100.73.191.22", "--host", "100.80.0.6", "--alias", "servicio-new", "--yes", "--json"]);
+  assert.equal(r.code, 0, r.stderr + r.stdout);
+  assert.match(sb.read(MANAGED), /HostName 100\.80\.0\.6/);
+  assert.deepEqual(sb.hc().map((m: { name: string; target: string }) => [m.name, m.target]), [["100.73.191.22", "servicio-new"]]);
 });
 
 test("edit without a terminal and without --yes stops at the question", () => {

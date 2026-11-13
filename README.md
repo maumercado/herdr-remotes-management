@@ -8,7 +8,7 @@ The herdr TUI (`herdr machine ...`) and the Herdr app (`hc machine ...`) keep se
 2. the herdr TUI's saved machines
 3. the Herdr app's machines
 
-It is a herdr plugin: a popup inside the herdr TUI (opened with a key you bind, e.g. `prefix+m`) and the same commands as a CLI. The Herdr app is kept in sync through `hc` when it is installed; there is no app front end, and the app's own machine dialog keeps working as before (`doctor` picks up machines added there).
+It is a herdr plugin with two front ends that run the same CLI: a popup inside the herdr TUI (opened with a key you bind, e.g. `prefix+m`) and a Machines dialog in the Herdr app (`mod.open herdr-machines`). Without the Herdr app, the dialog and the APP column are simply left out.
 
 Progress and what is left: [TODO.md](TODO.md). Design and the reasons behind it: [docs/PLAN.md](docs/PLAN.md).
 
@@ -32,8 +32,9 @@ That one command:
 
 1. checks the requirements above (`herdr-machines check`), and fails if any is missing
 2. registers the herdr TUI popup
+3. links the Herdr app's Machines dialog: `~/.config/herdr-app/mods/herdr-machines` points at the plugin's `app-mod` folder, so the dialog updates with the plugin. Skipped when the app has no config folder yet (herdr links it at its next start) or with `HERDR_MACHINES_SKIP_APP_MOD=1`; a folder of that name the plugin didn't make is left alone.
 
-`herdr plugin install` shows the commands it will run before it runs them. `herdr plugin update` updates it.
+`herdr plugin install` shows the commands it will run before it runs them. `herdr plugin update` updates the popup and the dialog.
 
 Then bind the popup to a key in herdr's `config.toml`:
 
@@ -51,6 +52,7 @@ description = "manage machines"
 
 ```sh
 herdr plugin uninstall herdr-machines
+rm ~/.config/herdr-app/mods/herdr-machines
 ```
 
 Machines you added stay in `~/.ssh/config.d/herdr-machines`, herdr and the app. To remove the SSH side too, delete that file and the two lines this tool added at the top of `~/.ssh/config`.
@@ -78,7 +80,7 @@ Press `prefix+m` in herdr. The popup lists your machines with their state in eac
 |---|---|
 | `a` | add a machine (alias and host are enough; user, port and key fall back to SSH's defaults, `Ctrl-L` fills them as last time) |
 | `A` | adopt a host you already have in `~/.ssh/config` (its entry is never edited) |
-| `e` | edit host, user, port, key or jump host. Works while the machine is offline; for a machine whose alias has no SSH entry yet, it creates one |
+| `e` | edit host, user, port, key or jump host. Works while the machine is offline; a machine whose alias has no SSH entry gets one, and one added with a raw address (`user@ip`) gets a name and moves there |
 | `r` | rename: the herdr label, the app name, or the SSH alias |
 | `d` | delete from herdr and the app, then choose whether to delete the SSH entry |
 | `l` | log in again (herdr reconnect, hc login) |
@@ -141,7 +143,15 @@ From a checkout, `bin/herdr-machines <command>` does the same. Commands: `list [
 
 ## The Herdr app
 
-There is no app front end. With `hc` installed, every change made here reaches the app too, and `list --json` gives another tool everything it needs (machines, their state in each place, adopt candidates). A personal app mod can call `herdr-machines list --json` through `exec` and open a terminal for changes; the plugin's folder comes from `herdr plugin list --json` (`plugin_root`).
+Open the Machines dialog with `mod.open herdr-machines` from the palette, or bind a key in `~/.config/herdr-app/keys.json`:
+
+```json
+{ "global": { "cmd-shift-m": "mod.open:herdr-machines" } }
+```
+
+It lists the same machines as the popup, with Add, Adopt, Edit, Rename, Log in, Delete and Doctor. Changes that can ask you something run in a terminal on this computer; the rest run quietly and the list refreshes. With `hc` installed, every change made from the popup or the CLI reaches the app too.
+
+**Machines added with the app's own Add machine** use a raw address (`user@1.2.3.4`), so they have no SSH entry to edit. Edit gives such a machine a name and an SSH entry with the new address, then moves it there in the app, keeping its app name and spaces. It is only removed and added again once the new address answers, so fixing the address of an offline machine is safe. After that, Edit works on it while it's offline.
 
 ## Reference
 
