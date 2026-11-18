@@ -1,3 +1,5 @@
 node_modules/
 .DS_Store
 *.log
+# Rewritten by gpui-shell on every run of the app mod.
+gpui-kit.d.ts
