@@ -18,6 +18,10 @@ function row(alias: string, extra: Partial<RowView> = {}): RowView {
     ssh: { kind: "managed", host: `${alias}.example`, file: "/home/u/.ssh/config.d/herdr-machines", line: 3 },
     tui: { id: `p-${alias}`, label: alias, session: "default", enabled: true, duplicates: 0 },
     app: { name: alias, session: null, state: "connected", version: "0.3.1", why: null, via: false, duplicates: 0 },
+    appOff: null,
+    canConnect: false,
+    canDisconnect: true,
+    connected: true,
     glyphs: { ssh: "●", tui: "●", app: "●" },
     ...extra,
   };
@@ -159,6 +163,26 @@ test("adopt picks from your own hosts, login and doctor run the CLI", () => {
   assert.deepEqual(effects, [{ kind: "run", args: ["login", "alpha"] }]);
   ({ effects } = press(start(), "s"));
   assert.deepEqual(effects, [{ kind: "run", args: ["doctor"] }]);
+});
+
+test("c disconnects after asking, and connects a disconnected machine at once", () => {
+  let { s, effects } = press(start(), "c");
+  assert.equal(s.mode, "confirm");
+  assert.match(s.confirm!.title, /Disconnect alpha/);
+  ({ effects } = press(s, "y"));
+  assert.deepEqual(effects, [{ kind: "run", args: ["disconnect", "alpha", "--yes"] }]);
+
+  const off = row("alpha", { app: null, appOff: { name: "alpha", session: null }, canConnect: true, canDisconnect: false, connected: false });
+  s = withData(start(), [off], []);
+  ({ s, effects } = press(s, "c"));
+  assert.deepEqual(effects, [{ kind: "run", args: ["connect", "alpha"] }]);
+  assert.match(render({ ...s, wide: true }, 100, 20, { color: false }).join("\n"), /APP  alpha  \(disconnected\)/);
+
+  const unreachable = row("alpha", { app: null, connected: false });
+  ({ s, effects } = press(withData(start(), [unreachable], []), "c"));
+  assert.equal(s.mode, "list", "no disconnect for a machine that isn't connected");
+  assert.deepEqual(effects, []);
+  assert.match(s.message!, /isn't connected; l logs in again/);
 });
 
 test("reload keeps the selection on the same machine", () => {

@@ -375,6 +375,21 @@ export function reduce(s0: UiState, key: Key): { s: UiState; effect?: Effect } {
     case "l":
       if (!row.tui && !row.app) return { s: { ...s, message: `${row.alias} is not in herdr or the app` } };
       return { s, effect: { kind: "run", args: ["login", row.alias] } };
+    case "c":
+      if (row.connected) return { s: { ...s, mode: "confirm", confirm: disconnectConfirm(row) } };
+      if (row.canConnect) return { s, effect: { kind: "run", args: ["connect", row.alias] } };
+      if (row.connected === null) return { s: { ...s, message: `still checking whether ${row.alias} is connected` } };
+      return { s: { ...s, message: row.canDisconnect ? `${row.alias} isn't connected; l logs in again` : `${row.alias} is not in herdr or the app` } };
   }
   return { s };
+}
+
+export function disconnectConfirm(row: RowView): Confirm {
+  const run = (): Next => ({ effect: { kind: "run", args: ["disconnect", row.alias, "--yes"] } });
+  return {
+    title: `Disconnect ${row.alias}?`,
+    lines: ["Its terminals keep running there. Its spaces leave the app until you connect again (c)."],
+    yes: run,
+    no: () => ({ cancel: true }),
+  };
 }

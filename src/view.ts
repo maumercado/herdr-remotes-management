@@ -2,7 +2,7 @@
 // CLI table and the TUI popup draw.
 
 import type { Row, State } from "./model.ts";
-import { isMachine } from "./model.ts";
+import { canConnect, canDisconnect, isMachine } from "./model.ts";
 
 export interface RowView {
   alias: string;
@@ -38,7 +38,20 @@ export interface RowView {
     via: boolean;
     duplicates: number;
   };
+  /** The app's machine while disconnected: what connect adds back. */
+  appOff: null | { name: string; session: string | null };
+  canConnect: boolean;
+  canDisconnect: boolean;
+  /** Connected right now; null until herdr's health is checked. Front ends offer Disconnect only then. */
+  connected: boolean | null;
   glyphs: { ssh: string; tui: string; app: string };
+}
+
+export function connectedNow(row: Row): boolean | null {
+  if (row.app?.state === "connected" || row.app?.state === "connecting") return true;
+  if (!row.tui?.enabled) return false;
+  if (!row.tuiHealth) return null;
+  return row.tuiHealth.status === "reachable";
 }
 
 export function sshGlyph(row: Row): string {
@@ -63,7 +76,7 @@ export function tuiGlyph(row: Row): string {
 }
 
 export function appGlyph(row: Row): string {
-  if (!row.app) return "○";
+  if (!row.app) return row.appOff ? "◌" : "○";
   switch (row.app.state) {
     case "connected":
     case undefined:
@@ -79,7 +92,7 @@ export function appGlyph(row: Row): string {
   }
 }
 
-export const LEGEND = "● ok  ◇ your own SSH entry  ○ missing  ◐ connecting  ! needs login  ↑ needs update  ✕ unreachable  ◌ disabled";
+export const LEGEND = "● ok  ◇ your own SSH entry  ○ missing  ◐ connecting  ! needs login  ↑ needs update  ✕ unreachable  ◌ disconnected";
 
 export function rowView(row: Row): RowView {
   return {
@@ -110,6 +123,10 @@ export function rowView(row: Row): RowView {
       via: Boolean(row.app.via),
       duplicates: row.appExtra.length,
     },
+    appOff: row.appOff && { name: row.appOff.name, session: row.appOff.session },
+    canConnect: canConnect(row),
+    canDisconnect: canDisconnect(row),
+    connected: connectedNow(row),
     glyphs: { ssh: sshGlyph(row), tui: tuiGlyph(row), app: appGlyph(row) },
   };
 }

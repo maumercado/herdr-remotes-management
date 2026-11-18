@@ -18,6 +18,8 @@ export interface Paths {
   backupsDir: string;
   lockFile: string;
   lastFile: string;
+  /** The app's machines while disconnected (hc can only forget them). */
+  disconnectedFile: string;
 }
 
 export function paths(env: NodeJS.ProcessEnv = process.env): Paths {
@@ -37,5 +39,6 @@ export function paths(env: NodeJS.ProcessEnv = process.env): Paths {
     backupsDir: join(stateDir, "backups"),
     lockFile: join(stateDir, "lock"),
     lastFile: join(stateDir, "last.json"),
+    disconnectedFile: join(stateDir, "disconnected.json"),
   };
 }

@@ -77,7 +77,7 @@ export function detailLines(row: RowView | undefined, width: number, style: Styl
   } else out.push(fit(row.raw ? "SSH  raw target, not an alias" : "SSH  no Host entry", width));
   out.push("");
   if (row.tui) {
-    out.push(fit(`TUI  ${row.tui.label}${row.tui.enabled ? "" : "  (disabled)"}`, width));
+    out.push(fit(`TUI  ${row.tui.label}${row.tui.enabled ? "" : "  (disconnected)"}`, width));
     kv("id", row.tui.id);
     kv("session", row.tui.session);
     kv("health", row.tui.health ?? (healthLoading ? "checking…" : undefined));
@@ -92,6 +92,9 @@ export function detailLines(row: RowView | undefined, width: number, style: Styl
     kv("hc", row.app.version);
     kv("why", row.app.why);
     if (row.app.duplicates) kv("extra", `${row.app.duplicates} more machine(s) with this target`);
+  } else if (row.appOff) {
+    out.push(fit(`APP  ${row.appOff.name}  (disconnected)`, width));
+    kv("session", row.appOff.session);
   } else out.push(fit("APP  not in the app", width));
   return out;
 }
@@ -118,8 +121,8 @@ export function pickerLines(p: Picker, width: number): string[] {
   return boxLines(p.title, p.items.map((it, i) => `${i === p.selected ? "▸" : " "} ${it.label}`), width, "enter pick  esc cancel");
 }
 
-const HINTS_WIDE = "a add  A adopt  e edit  r rename  d delete  l login  s doctor  / filter  R refresh  q close";
-const HINTS_NARROW = "a A e r d l s / R q  enter details";
+const HINTS_WIDE = "a add  A adopt  e edit  r rename  d delete  l login  c (dis)connect  s doctor  / filter  R refresh  q close";
+const HINTS_NARROW = "a A e r d l c s / R q  enter details";
 
 /** The whole screen, one string per terminal row. */
 export function render(s: UiState, cols: number, rows: number, style: Style): string[] {

@@ -3,9 +3,21 @@ import assert from "node:assert/strict";
 import { merge, isMachine } from "../src/model.ts";
 import { aliasProblem, cleanHcName, hcNameProblem, portProblem, sshAliasProblem } from "../src/tools.ts";
 import type { HostEntry } from "../src/sshconfig.ts";
+import { connectedNow } from "../src/view.ts";
 
 const host = (alias: string, file: string, fields = {}): HostEntry => ({ alias, file, line: 1, fields, siblings: [] });
 const profile = (id: string, target: string, label = target) => ({ id, label, target, session: "default", enabled: true, selected: false });
+
+test("connected means live now: an enabled but unreachable machine isn't", () => {
+  const [row] = merge([], "/m", [profile("p1", "box")], []);
+  assert.equal(connectedNow(row!), null, "unknown until health is checked");
+  assert.equal(connectedNow({ ...row!, tuiHealth: { status: "reachable" } }), true);
+  assert.equal(connectedNow({ ...row!, tuiHealth: { status: "error", error: "timed out" } }), false);
+  assert.equal(connectedNow({ ...row!, tui: { ...row!.tui!, enabled: false } }), false);
+  const [app] = merge([], "/m", [], [{ name: "box", target: "box", state: "unreachable" }]);
+  assert.equal(connectedNow(app!), false);
+  assert.equal(connectedNow({ ...app!, app: { ...app!.app!, state: "connected" } }), true);
+});
 
 test("rows are matched by target, never by label or name", () => {
   const rows = merge(

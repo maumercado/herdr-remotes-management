@@ -84,6 +84,7 @@ Press `prefix+m` in herdr. The popup lists your machines with their state in eac
 | `r` | rename: the herdr label, the app name, or the SSH alias |
 | `d` | delete from herdr and the app, then choose whether to delete the SSH entry |
 | `l` | log in again (herdr reconnect, hc login) |
+| `c` | disconnect (asks first), or connect a disconnected machine. The machine, its SSH entry and its remote terminals all stay |
 | `s` | doctor: find and fix drift between the three places |
 | `/` | filter |
 | `R` | refresh, with live health checks |
@@ -106,7 +107,7 @@ When a step fails you can retry it, undo the steps already done, or leave it for
 | `!` | needs login |
 | `↑` | needs an update on the remote |
 | `✕` | unreachable |
-| `◌` | disabled in herdr |
+| `◌` | disconnected |
 
 ### Scripting
 
@@ -118,7 +119,7 @@ sh "$root/bin/run" list --json
 sh "$root/bin/run" doctor --fix --yes
 ```
 
-From a checkout, `bin/herdr-machines <command>` does the same. Commands: `list [--all] [--health]`, `add`, `adopt`, `edit`, `rename`, `delete`, `login`, `doctor [--fix]`, `check`; `help` prints the details.
+From a checkout, `bin/herdr-machines <command>` does the same. Commands: `list [--all] [--health]`, `add`, `adopt`, `edit`, `rename`, `delete`, `login`, `disconnect`, `connect`, `doctor [--fix]`, `check`; `help` prints the details.
 
 ## How it works
 
@@ -129,6 +130,8 @@ From a checkout, `bin/herdr-machines <command>` does the same. Commands: `list [
 **Order.** Every change runs SSH first, then herdr, then the app. Input is checked before anything is written.
 
 **Connection reuse.** herdr names its shared SSH connection after the resolved host, port and user, so endpoint edits apply on the next connection. hc keeps its connection under the alias for up to 10 idle minutes, so `edit` offers to refresh the app's login (remove and add again with the same name and session).
+
+**Disconnecting.** herdr disables the machine (`herdr machine disable`). hc has no disconnect, only `hc machine rm`, so the app forgets the machine and this tool keeps its app name and session in `~/.local/state/herdr-machines/disconnected.json`. `connect` enables it in herdr and adds it back to the app with that name and session. Its spaces live in that machine's core, so they come back with it. Doctor doesn't treat a disconnected machine as drift.
 
 **Questions.** Anything that can ask you something (a host key, a password, herdr's session picker, installing on the remote) runs in your terminal. Nothing answers prompts for you. With `--json`, or without a terminal, a command that would need an answer stops with exit code 3 and changes nothing.
 

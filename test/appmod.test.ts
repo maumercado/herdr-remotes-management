@@ -85,6 +85,7 @@ function setup(overrides: Record<string, unknown> = {}) {
       return p;
     },
     timer: { after() {}, every() {} },
+    sleep: async () => {},
     focus_handle: () => ({ focus() {} }),
     stop_propagation() {},
   };
@@ -196,6 +197,95 @@ test("edit is open for app-added raw machines and for machines without an entry,
   view.submitForm(cx);
   const [, args] = hm.runs.at(-1) as [string, any];
   assert.deepEqual(args.argv.slice(4), ["edit", "maumercado@100.73.191.22", "--alias", "servicio-new", "--host", "100.80.0.5", "--user", "maumercado"]);
+});
+
+test("disconnect asks and runs quietly; a disconnected machine offers Connect instead", async () => {
+  const mod = await loadMod();
+  const { hm, cx, settle } = setup();
+  const view = new mod.default();
+  view.init({}, cx);
+  await settle();
+  view.disconnect(view.machines[0], cx);
+  assert.match(view.confirm.title, /Disconnect box1/);
+  view.render();
+  view.confirm.yes(cx);
+  await settle();
+  assert.deepEqual(hm.execCalls.find((c) => c[1] === "disconnect"), ["/repo/bin/herdr-machines", "disconnect", "box1", "--yes"]);
+
+  const off = { ...view.machines[0], app: null, appOff: { name: "box1", session: null }, canConnect: true, canDisconnect: false };
+  assert.ok(mod.isDisconnected(off));
+  assert.ok(!mod.isDisconnected({ ...off, canDisconnect: true }), "partly connected still offers Disconnect");
+  view.machines[0] = off;
+  view.render();
+  assert.ok(mod.isMachine(off));
+  assert.ok(mod.isMachine({ appOff: { name: "x" } }), "a machine only the app knew stays listed while disconnected");
+});
+
+test("the connection button changes its label in place: Connect, Connecting…, Disconnect, or Log in", async () => {
+  const mod = await loadMod();
+  const label = (m: object, pending: object | null = null) => mod.connectionButton({ alias: "box1", ...m }, pending).label;
+  assert.equal(label({ canConnect: true, canDisconnect: false }), "Connect");
+  assert.equal(label({ canConnect: true, canDisconnect: false }, { alias: "box1", kind: "connect" }), "Connecting…");
+  assert.equal(label({ canDisconnect: true, connected: true }, { alias: "other", kind: "connect" }), "Disconnect", "another machine's progress");
+  assert.equal(label({ canDisconnect: true, connected: true }, { alias: "box1", kind: "disconnect" }), "Disconnecting…");
+  assert.equal(label({ canDisconnect: true, connected: null }), "Checking…");
+  assert.equal(label({ canDisconnect: true, connected: false }), "Log in", "down but not disconnected: log in again");
+  assert.equal(mod.connectionButton({ alias: "x", canDisconnect: false, canConnect: false }).action, null);
+
+  // Connect keeps showing progress while hc says connecting, then shows Disconnect.
+  const states = ["connecting", "connecting", "connected"];
+  const listing = () => {
+    const state = states.length > 1 ? states.shift() : states[0];
+    const box = { ...LIST.machines[0], app: { name: "box1", state, via: false, duplicates: 0 }, canConnect: false, canDisconnect: true, connected: true };
+    return { code: 0, stdout: JSON.stringify({ ...LIST, machines: [box] }), stderr: "" };
+  };
+  const { hm, cx, settle } = setup({ exec: (args: string[]) => (args[0] === "list" ? listing() : { code: 0, stdout: "ssh –  tui –  app ✓\n", stderr: "" }) });
+  const view = new mod.default();
+  view.init({}, cx);
+  await settle();
+  states.unshift("connecting", "connecting");
+  view.changeConnection("connect", view.machines[0], cx);
+  assert.equal(mod.connectionButton(view.machines[0], view.pending).label, "Connecting…");
+  await settle();
+  assert.equal(view.pending, null);
+  assert.equal(view.machines[0].app.state, "connected");
+  assert.equal(mod.connectionButton(view.machines[0], view.pending).label, "Disconnect");
+  assert.ok(hm.execCalls.filter((c) => c[1] === "list").length >= 5, "polled while connecting");
+});
+
+test("a slow health check that started before a disconnect can't bring the old state back", async () => {
+  const mod = await loadMod();
+  const box = { ...LIST.machines[0], appOff: null, canConnect: false, canDisconnect: true, connected: true };
+  const off = { ...box, app: null, appOff: { name: "box1", session: null }, canConnect: true, canDisconnect: false, connected: false };
+  let disconnected = false;
+  let releaseHealth = null as (() => void) | null;
+  const listing = () => ({ code: 0, stdout: JSON.stringify({ ...LIST, machines: [disconnected ? off : box] }), stderr: "" });
+  const { cx, settle } = setup({
+    exec: (args: string[]) => {
+      if (args[0] !== "list") {
+        disconnected = true;
+        return { code: 0, stdout: "ssh –  tui –  app ✓\n", stderr: "" };
+      }
+      const answer = listing();
+      // The first health check is slow (an unreachable machine), and answers with what it saw when it started.
+      if (args.includes("--health") && !releaseHealth) return new Promise((done) => (releaseHealth = () => done(answer)));
+      return answer;
+    },
+  });
+  const ticks = async () => {
+    for (let i = 0; i < 20; i++) await new Promise((r) => setImmediate(r));
+  };
+  const view = new mod.default();
+  view.init({}, cx);
+  await ticks();
+  assert.ok(releaseHealth, "the first health check is still running");
+  view.changeConnection("disconnect", view.machines[0], cx);
+  await ticks();
+  assert.equal(mod.connectionButton(view.machines[0], view.pending).label, "Connect");
+  releaseHealth!();
+  await settle();
+  assert.equal(view.machines[0].appOff?.name, "box1", "the stale answer was dropped");
+  assert.equal(mod.connectionButton(view.machines[0], view.pending).label, "Connect");
 });
 
 test("delete asks about the SSH entry and runs quietly with flags; exit 3 falls back to a terminal", async () => {

@@ -43,7 +43,30 @@ export function cliFromPluginList(stdout) {
 }
 
 export function isMachine(m) {
-  return Boolean(m.tui || m.app || m.ssh?.kind === "managed");
+  return Boolean(m.tui || m.app || m.appOff || m.ssh?.kind === "managed");
+}
+
+/** Something to connect again and nothing still connected. */
+export function isDisconnected(m) {
+  return Boolean(m.canConnect && !m.canDisconnect);
+}
+
+export function needsLogin(m) {
+  return m.tui?.health === "auth required" || m.app?.state === "needs_login";
+}
+
+/**
+ * The first button of a machine's row: what it says and does. It never moves,
+ * only its label changes, so `pending` (a connect or disconnect still running
+ * for that alias) shows there as progress.
+ */
+export function connectionButton(m, pending) {
+  if (pending?.alias === m.alias) return { label: pending.kind === "connect" ? "Connecting…" : "Disconnecting…", action: null, primary: pending.kind === "connect", progress: true };
+  if (isDisconnected(m)) return { label: "Connect", action: "connect", primary: true };
+  if (m.connected === true) return { label: "Disconnect", action: "disconnect" };
+  if (m.connected === null) return { label: "Checking…", action: null };
+  if (m.canDisconnect) return { label: "Log in", action: "login", primary: true };
+  return { label: "Connect", action: null };
 }
 
 export function isCandidate(m) {
@@ -91,6 +114,7 @@ export function suggestAlias(m, taken) {
 export function editBlocker(m) {
   if (m.app?.via) return "reached through a command, change it with hc";
   if (m.ssh?.kind === "yours") return `your own entry in ${m.ssh.file}: edit that file`;
+  if (m.raw && m.canConnect) return "disconnected: connect it first";
   return null;
 }
 
@@ -108,7 +132,9 @@ export default class Machines extends View {
     this.form = null;
     this.confirm = null;
     this.busy = false;
+    this.pending = null;
     this.healthLoaded = false;
+    this.loads = 0;
     this.message = "";
     cx.spawn(async (cx) => {
       await this.load(false);
@@ -128,12 +154,16 @@ export default class Machines extends View {
   }
 
   async load(health) {
+    const generation = ++this.loads;
     this.cli ??= await this.findCli();
     if (!this.cli) {
       this.error = `The herdr plugin isn't installed. Run this in a terminal, then reopen: ${INSTALL}`;
       return;
     }
     const r = await exec(this.cli, ["list", "--all", "--json", ...(health ? ["--health"] : [])], { timeout: 60000 }).catch((e) => ({ code: 1, stdout: "", stderr: String(e) }));
+    // A health check waits up to 8s on an unreachable machine. Its answer
+    // describes the moment it started, so a newer load (one after a change) wins.
+    if (generation !== this.loads) return;
     let data = null;
     try {
       data = JSON.parse(r.stdout);
@@ -172,8 +202,12 @@ export default class Machines extends View {
     closeOverlay(props().overlay);
   }
 
-  /** Runs a command that asks nothing. Exit 3 means it needs a terminal after all. */
-  quick(args, cx) {
+  /**
+   * Runs a command that asks nothing. Exit 3 means it needs a terminal after all.
+   * Reloads at once without health, so the change shows right away; `settle`
+   * runs then, and health fills in last.
+   */
+  quick(args, cx, settle = null) {
     this.busy = true;
     this.mode = "list";
     this.message = `herdr-machines ${args.join(" ")}…`;
@@ -182,13 +216,35 @@ export default class Machines extends View {
       const r = await exec(this.cli, args, { timeout: 120000 }).catch((e) => ({ code: 1, stdout: "", stderr: String(e) }));
       this.busy = false;
       if (r.code === 3) {
+        this.pending = null;
         this.inTerminal(args);
         return;
       }
       const lines = (r.stdout + "\n" + r.stderr).split("\n").map((l) => l.trim()).filter((l) => l && !l.startsWith("…"));
       this.message = (r.code === 0 ? "" : `exit ${r.code}: `) + (lines.pop() ?? "done");
-      await this.load(this.healthLoaded);
+      await this.load(false);
       cx.notify();
+      if (settle) await settle(r.code, cx);
+      cx.notify();
+      await this.load(true);
+      cx.notify();
+    });
+  }
+
+  /** Connects or disconnects; the button shows the progress until the machine settles (about 30s at most). */
+  changeConnection(kind, row, cx) {
+    this.pending = { alias: row.alias, kind };
+    const args = kind === "connect" ? ["connect", row.alias] : ["disconnect", row.alias, "--yes"];
+    this.quick(args, cx, async (code, cx) => {
+      if (code === 0 && kind === "connect") {
+        const connecting = () => this.machines?.find((x) => x.alias === row.alias)?.app?.state === "connecting";
+        for (let i = 0; i < 20 && connecting(); i++) {
+          await cx.sleep(1500);
+          await this.load(false);
+          cx.notify();
+        }
+      }
+      this.pending = null;
     });
   }
 
@@ -298,6 +354,16 @@ export default class Machines extends View {
     );
   }
 
+  disconnect(row, cx) {
+    this.ask(
+      `Disconnect ${row.alias}?`,
+      "Its terminals keep running there. Its spaces leave the sidebar until you connect again.",
+      (cx) => this.changeConnection("disconnect", row, cx),
+      null,
+      cx,
+    );
+  }
+
   back(cx) {
     this.mode = "list";
     this.form = null;
@@ -355,6 +421,20 @@ export default class Machines extends View {
       .child(label);
   }
 
+  /** Fixed width, so Connect, Connecting… and Disconnect swap without moving the other buttons. */
+  connectionButton(t, m) {
+    const b = connectionButton(m, this.pending);
+    const actions = {
+      connect: (cx) => this.changeConnection("connect", m, cx),
+      disconnect: (cx) => this.disconnect(m, cx),
+      login: () => this.inTerminal(["login", m.alias]),
+    };
+    return this.button(t, "hm-connection", b.label, actions[b.action] ?? (() => {}), Boolean(b.primary), !b.action)
+      .w(120)
+      .justify_center()
+      .when(Boolean(b.progress), (el) => el.opacity(1));
+  }
+
   glyph(t, g) {
     return div().w(28).flex_none().text_center().text_color(t[GLYPH_COLOR[g] ?? "foreground"] ?? t.foreground).child(g);
   }
@@ -402,6 +482,7 @@ export default class Machines extends View {
                         cx.notify();
                       })
                       .child(div().flex_1().min_w(0).truncate().text_size(13).text_color(t.foreground).child(m.alias))
+                      .when(isDisconnected(m), (el) => el.child(div().flex_none().pr(6).text_size(11).text_color(t.dim).child("disconnected")))
                       .child(this.glyph(t, m.glyphs.ssh))
                       .child(this.glyph(t, m.glyphs.tui))
                       .child(this.glyph(t, m.glyphs.app)),
@@ -423,11 +504,13 @@ export default class Machines extends View {
       ? section(m.ssh.kind === "managed" ? "SSH · managed" : "SSH · your own entry", [line("host", m.ssh.host), line("user", m.ssh.user), line("port", m.ssh.port), line("key", m.ssh.key), line("jump", m.ssh.jump), line("file", `${shortPath(m.ssh.file)}:${m.ssh.line}`)])
       : section("SSH", [div().text_size(12.5).text_color(t.dim).child(m.raw ? "raw target, not an alias" : "no Host entry")]);
     const tui = m.tui
-      ? section(`herdr TUI${m.tui.enabled ? "" : " · disabled"}`, [line("label", m.tui.label), line("session", m.tui.session), line("health", m.tui.health ?? (this.healthLoaded ? null : "checking…")), line("error", m.tui.error)])
+      ? section(`herdr TUI${m.tui.enabled ? "" : " · disconnected"}`, [line("label", m.tui.label), line("session", m.tui.session), line("health", m.tui.health ?? (this.healthLoaded ? null : "checking…")), line("error", m.tui.error)])
       : section("herdr TUI", [div().text_size(12.5).text_color(t.dim).child(this.tools?.herdr?.available === false ? this.tools.herdr.reason : "not in herdr")]);
     const app = m.app
       ? section("App", [line("name", m.app.name), line("session", m.app.session), line("state", m.app.state), line("hc", m.app.version), line("why", m.app.why)])
-      : section("App", [div().text_size(12.5).text_color(t.dim).child(this.tools?.hc?.available === false ? this.tools.hc.reason : "not in the app")]);
+      : m.appOff
+        ? section("App · disconnected", [line("name", m.appOff.name), line("session", m.appOff.session)])
+        : section("App", [div().text_size(12.5).text_color(t.dim).child(this.tools?.hc?.available === false ? this.tools.hc.reason : "not in the app")]);
     const managed = m.ssh?.kind === "managed";
     return v_flex()
       .flex_1()
@@ -441,13 +524,14 @@ export default class Machines extends View {
         h_flex()
           .gap(6)
           .flex_wrap()
+          .child(this.connectionButton(t, m))
           .child(this.button(t, "hm-edit", "Edit", (cx) => this.openForm("edit", m, cx), false, Boolean(editBlocker(m))))
           .child(this.button(t, "hm-rename", "Rename", (cx) => {
             this.mode = "rename";
             cx.notify();
           }))
-          .child(this.button(t, "hm-login", "Log in", () => this.inTerminal(["login", m.alias]), false, !m.tui && !m.app))
-          .child(this.button(t, "hm-delete", "Delete", (cx) => this.remove(m, cx), false, !m.tui && !m.app && !managed)),
+          .when(needsLogin(m) && connectionButton(m, this.pending).action !== "login", (el) => el.child(this.button(t, "hm-login", "Log in", () => this.inTerminal(["login", m.alias]))))
+          .child(this.button(t, "hm-delete", "Delete", (cx) => this.remove(m, cx), false, !isMachine(m))),
       );
   }
 
@@ -593,6 +677,6 @@ export default class Machines extends View {
           .child(div().text_size(11).text_color(t.dim).child("Esc")),
       )
       .child(body)
-      .child(div().text_size(11.5).text_color(this.message ? t.muted : t.dim).truncate().child(this.message || "● ok  ◇ your own SSH entry  ○ missing  ◐ connecting  ! needs login  ↑ needs update  ✕ unreachable"));
+      .child(div().text_size(11.5).text_color(this.message ? t.muted : t.dim).truncate().child(this.message || "● ok  ◇ your own SSH entry  ○ missing  ◐ connecting  ! needs login  ↑ needs update  ✕ unreachable  ◌ disconnected"));
   }
 }

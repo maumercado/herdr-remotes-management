@@ -9,6 +9,8 @@ import { checkInclude, readConfig } from "./sshconfig.ts";
 import type { HcMachine, HerdrProfile, HerdrStatus, Listing } from "./tools.ts";
 import { Hc, Herdr } from "./tools.ts";
 import type { Bins } from "./proc.ts";
+import type { DisconnectedApp, DisconnectedApps } from "./disconnected.ts";
+import { readDisconnected } from "./disconnected.ts";
 
 export interface SshSide {
   managed: boolean;
@@ -27,6 +29,8 @@ export interface Row {
   tuiHealth?: HerdrStatus;
   app: HcMachine | null;
   appExtra: HcMachine[];
+  /** Forgotten by hc on disconnect, kept to add it back on connect. Null while the app has it. */
+  appOff: DisconnectedApp | null;
   /** The target is a raw user@host or ssh:// URL, or a command (hc --via), not an alias. */
   raw: boolean;
 }
@@ -81,12 +85,13 @@ export function merge(
   managedRealPath: string,
   herdr: HerdrProfile[],
   hc: HcMachine[],
+  disconnected: DisconnectedApps = {},
 ): Row[] {
   const rows = new Map<string, Row>();
   const get = (alias: string, raw: boolean): Row => {
     let row = rows.get(alias);
     if (!row) {
-      row = { alias, ssh: null, tui: null, tuiExtra: [], app: null, appExtra: [], raw };
+      row = { alias, ssh: null, tui: null, tuiExtra: [], app: null, appExtra: [], appOff: null, raw };
       rows.set(alias, row);
     }
     return row;
@@ -112,19 +117,35 @@ export function merge(
     if (row.app) row.appExtra.push(machine);
     else row.app = machine;
   }
+  // An entry is stale once the app has the machine again (added back by hand).
+  for (const [target, app] of Object.entries(disconnected)) {
+    const known = rows.get(target);
+    if (known?.app) continue;
+    get(target, isRawTarget(target)).appOff = app;
+  }
   return [...rows.values()];
 }
 
 /** A row is a machine when some tool knows it or this tool manages it. */
 export function isMachine(row: Row): boolean {
-  return Boolean(row.tui || row.app || row.ssh?.managed);
+  return Boolean(row.tui || row.app || row.appOff || row.ssh?.managed);
+}
+
+/** herdr has it enabled, or the app has it. */
+export function canDisconnect(row: Row): boolean {
+  return Boolean(row.tui?.enabled || row.app);
+}
+
+/** herdr has it disabled, or the app forgot it on disconnect. */
+export function canConnect(row: Row): boolean {
+  return Boolean((row.tui && !row.tui.enabled) || row.appOff);
 }
 
 export function loadState(p: Paths, bins: Bins): State {
   const ssh = readSsh(p);
   const herdr = new Herdr(bins).list();
   const hc = new Hc(bins).list();
-  const rows = merge(ssh.read.hosts, ssh.managedRealPath, herdr.available ? herdr.items : [], hc.available ? hc.items : []);
+  const rows = merge(ssh.read.hosts, ssh.managedRealPath, herdr.available ? herdr.items : [], hc.available ? hc.items : [], readDisconnected(p));
   rows.sort((a, b) => a.alias.localeCompare(b.alias));
   return { rows, ssh, herdr, hc };
 }

@@ -249,6 +249,40 @@ test("delete asks about the SSH entry and removes duplicates", () => {
   assert.match(sb.read(MANAGED), /Host keep/);
 });
 
+test("disconnect keeps the machine; connect brings it back with the same name and session", () => {
+  const sb = sandbox();
+  sb.run(["add", "box", "--host", "1.2.3.4", "--session", "s1"]);
+  sb.run(["rename", "box", "--hc-name", "boxy", "--yes"]);
+  assert.equal(sb.run(["disconnect", "box"]).code, 3, "asks first");
+
+  let r = sb.run(["disconnect", "box", "--yes", "--json"]);
+  assert.equal(r.code, 0, r.stderr + r.stdout);
+  assert.deepEqual([r.json.report.sides.tui.state, r.json.report.sides.app.state], ["ok", "ok"]);
+  assert.deepEqual(sb.herdr().map((p: any) => [p.target, p.enabled]), [["box", false]]);
+  assert.deepEqual(sb.hc(), []);
+  const [view] = sb.run(["list", "--json"]).json.machines;
+  assert.deepEqual([view.glyphs.tui, view.glyphs.app, view.canConnect, view.canDisconnect], ["◌", "◌", true, false]);
+  assert.deepEqual(view.appOff, { name: "boxy", session: "s1" });
+  assert.deepEqual(sb.run(["doctor", "--json"]).json.issues, [], "a disconnected machine isn't drift");
+  assert.equal(sb.run(["disconnect", "box", "--yes"]).code, 2);
+  assert.equal(sb.run(["rename", "box", "--alias", "box2", "--yes"]).code, 2);
+
+  r = sb.run(["connect", "box", "--json"]);
+  assert.equal(r.code, 0, r.stderr + r.stdout);
+  assert.deepEqual(sb.herdr().map((p: any) => [p.target, p.enabled]), [["box", true]]);
+  assert.deepEqual(sb.hc().map((m) => [m.name, m.target, m.session]), [["boxy", "box", "s1"]]);
+  assert.equal(sb.run(["list", "--json"]).json.machines[0].appOff, null);
+  assert.equal(sb.run(["connect", "box"]).code, 2);
+});
+
+test("delete forgets a disconnected app machine too", () => {
+  const sb = sandbox();
+  sb.run(["add", "box", "--host", "1.2.3.4"]);
+  sb.run(["disconnect", "box", "--yes"]);
+  assert.equal(sb.run(["delete", "box", "--yes", "--ssh=delete"]).code, 0);
+  assert.deepEqual(sb.run(["list", "--json"]).json.machines, []);
+});
+
 test("doctor finds drift and fixes it with --fix --yes", () => {
   const sb = sandbox();
   sb.write(".ssh/config", "Host mine\n  HostName 9.9.9.9\n");

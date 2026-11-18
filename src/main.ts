@@ -20,6 +20,9 @@ Usage:
   ${TOOL} rename <alias> (--label L | --hc-name N | --alias A)
   ${TOOL} delete <alias> [--ssh=keep|delete]
   ${TOOL} login <alias>
+  ${TOOL} disconnect <alias>
+      (herdr disables it, the app forgets it but this tool keeps its name and session; terminals keep running)
+  ${TOOL} connect <alias>
   ${TOOL} doctor [--fix]
   ${TOOL} check
   ${TOOL} ui
@@ -134,6 +137,12 @@ export async function main(argv: string[]): Promise<number> {
       }
       case "login":
         res = await cmd.login(ctx, one(rest, "an alias"));
+        break;
+      case "disconnect":
+        res = await cmd.disconnect(ctx, one(rest, "an alias"));
+        break;
+      case "connect":
+        res = await cmd.connect(ctx, one(rest, "an alias"));
         break;
       case "doctor":
         res = await cmd.doctor(ctx, { fix: v.fix });

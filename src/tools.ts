@@ -106,6 +106,14 @@ export class Herdr {
   reconnect(labelOrId: string): Outcome {
     return outcome(runInteractive(this.bin, ["machine", "reconnect", labelOrId]));
   }
+
+  enable(id: string): Outcome {
+    return outcome(run(this.bin, ["machine", "enable", id]));
+  }
+
+  disable(id: string): Outcome {
+    return outcome(run(this.bin, ["machine", "disable", id]));
+  }
 }
 
 export class Hc {

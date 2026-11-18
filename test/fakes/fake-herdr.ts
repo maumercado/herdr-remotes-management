@@ -49,6 +49,14 @@ switch (sub) {
     save("herdr", left);
     break;
   }
+  case "enable":
+  case "disable": {
+    const p = profiles.find((x) => x.id === first);
+    if (!p) fail(`unknown profile ${first}`, 2);
+    p.enabled = sub === "enable";
+    save("herdr", profiles);
+    break;
+  }
   case "reconnect":
     break;
   default:

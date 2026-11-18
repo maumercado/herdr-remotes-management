@@ -4,7 +4,8 @@
 import type { Ctx } from "./io.ts";
 import { confirm, EXIT, NeedsTerminal, UsageError } from "./io.ts";
 import type { Row, State } from "./model.ts";
-import { addHealth, isMachine, loadState } from "./model.ts";
+import { addHealth, canConnect, canDisconnect, isMachine, loadState } from "./model.ts";
+import { forgetDisconnected, rememberDisconnected } from "./disconnected.ts";
 import type { Fields } from "./sshconfig.ts";
 import { addManagedHost, editManagedHost, removeManagedHost, renameManagedHost } from "./sshconfig.ts";
 import { reachStep, sshWriteStep, writeBlockers } from "./sshwrite.ts";
@@ -200,7 +201,7 @@ export async function edit(ctx: Ctx, alias: string, changes: Fields, opts: { rec
     );
   }
   let reconnect = false;
-  if (endpointChanged && row.tui && state.herdr.available) {
+  if (endpointChanged && row.tui?.enabled && state.herdr.available) {
     reconnect = opts.reconnect ?? (ctx.interactive ? await confirm(ctx, `Reconnect ${alias} in herdr now?`, true) : false);
   }
 
@@ -247,7 +248,7 @@ export async function edit(ctx: Ctx, alias: string, changes: Fields, opts: { rec
     skip(
       report,
       "app",
-      !row.app ? "not there" : !endpointChanged ? "no change needed" : appConnected ? "old connection may linger up to 10 idle minutes" : "reconnects with the new address on its own",
+      row.appOff ? "disconnected, uses the new address on connect" : !row.app ? "not there" : !endpointChanged ? "no change needed" : appConnected ? "old connection may linger up to 10 idle minutes" : "reconnects with the new address on its own",
     );
   }
 
@@ -265,6 +266,7 @@ export async function edit(ctx: Ctx, alias: string, changes: Fields, opts: { rec
  */
 async function repoint(ctx: Ctx, state: State, row: Row, changes: Fields, aliasOpt: string | undefined): Promise<CommandResult> {
   if (row.app?.via) throw new UsageError(`${row.alias} is reached through a command (hc --via), not ssh; change it with hc`);
+  if (canConnect(row)) throw new UsageError(`${row.alias} is disconnected; connect it first`);
   if (!changes.host) throw new UsageError(`${row.alias} uses a raw address; give the new address with --host (and a name for it with --alias)`);
   const parsed = parseRawTarget(row.alias);
   const fields: Fields = { user: parsed.user, port: parsed.port };
@@ -362,7 +364,7 @@ export async function rename(ctx: Ctx, alias: string, opts: { label?: string; hc
   }
 
   if (opts.hcName !== undefined) {
-    if (!row.app) throw new UsageError(`${alias} is not in the app`);
+    if (!row.app) throw new UsageError(row.appOff ? `${alias} is disconnected; connect it first` : `${alias} is not in the app`);
     const bad = hcNameProblem(opts.hcName);
     if (bad) throw new UsageError(`app name: ${bad}`);
     const ok = await confirm(ctx, `App addresses that use ${row.app.name} (like ${row.app.name}/t7) stop working. Rename to ${opts.hcName}?`);
@@ -375,6 +377,8 @@ export async function rename(ctx: Ctx, alias: string, opts: { label?: string; hc
 
   const next = opts.alias!;
   if (!row.ssh?.managed) throw new UsageError(`only machines managed by this tool can change alias (${alias} is ${row.ssh ? "your own entry" : "not in SSH"})`);
+  // Moving adds the machine again in herdr and the app, which would connect it.
+  if (canConnect(row)) throw new UsageError(`${alias} is disconnected; connect it first`);
   const problem = aliasProblem(next);
   if (problem) throw new UsageError(problem);
   if (state.rows.some((r) => r.alias === next)) throw new UsageError(`${next} is already used`);
@@ -429,7 +433,7 @@ export async function rename(ctx: Ctx, alias: string, opts: { label?: string; hc
 export async function remove(ctx: Ctx, alias: string, opts: { ssh?: "keep" | "delete" }): Promise<CommandResult> {
   const state = loadState(ctx.p, ctx.bins);
   const row = findRow(state, alias);
-  if (!row.tui && !row.app && !row.ssh?.managed) throw new UsageError(`${alias} is not in herdr, the app or the managed file`);
+  if (!isMachine(row)) throw new UsageError(`${alias} is not in herdr, the app or the managed file`);
   if (!(await confirm(ctx, `Remove ${alias} from herdr and the app? Remote sessions keep running.`))) return { code: 1, text: "Nothing changed." };
 
   let deleteSsh = false;
@@ -474,6 +478,15 @@ export async function remove(ctx: Ctx, alias: string, opts: { ssh?: "keep" | "de
         return { ok: true };
       },
     });
+  } else if (row.appOff) {
+    steps.push({
+      side: "app",
+      title: `forget the disconnected app machine ${row.appOff.name}`,
+      run: () => {
+        forgetDisconnected(ctx.p, row.alias);
+        return { ok: true };
+      },
+    });
   } else skip(report, "app", "not there");
   if (deleteSsh) {
     steps.push(sshWriteStep(ctx, { title: `delete Host ${alias}`, mutate: (current) => removeManagedHost(current ?? "", alias) }));
@@ -507,9 +520,9 @@ export function findIssues(state: State): Issue[] {
     if (row.raw) continue;
     if (row.ssh && isMachine(row)) {
       if (state.herdr.available && !row.tui) issues.push({ alias: row.alias, kind: "missing-tui", message: "not in herdr", fixable: true });
-      if (state.hc.available && !row.app) issues.push({ alias: row.alias, kind: "missing-app", message: "not in the app", fixable: true });
+      if (state.hc.available && !row.app && !row.appOff) issues.push({ alias: row.alias, kind: "missing-app", message: "not in the app", fixable: true });
     }
-    if (!row.ssh && (row.tui || row.app)) {
+    if (!row.ssh && (row.tui || row.app || row.appOff)) {
       issues.push({ alias: row.alias, kind: "missing-ssh", message: "no SSH Host entry for this alias; add it with `add --host`, or delete the machine", fixable: false });
     }
     if (row.tuiExtra.length > 0) issues.push({ alias: row.alias, kind: "duplicate-tui", message: `${row.tuiExtra.length} extra herdr profile(s) with this target`, fixable: true });
@@ -589,6 +602,78 @@ export async function doctor(ctx: Ctx, opts: { fix?: boolean }): Promise<Command
 }
 
 // ---------------------------------------------------------------------------
+// disconnect and connect
+
+/**
+ * Drops the connection but keeps the machine: herdr disables its profile, and
+ * the app forgets it (hc has no disconnect) while this tool remembers its name
+ * and session for connect. Terminals on the machine keep running.
+ */
+export async function disconnect(ctx: Ctx, alias: string): Promise<CommandResult> {
+  const state = loadState(ctx.p, ctx.bins);
+  const row = findRow(state, alias);
+  if (!canDisconnect(row)) throw new UsageError(canConnect(row) ? `${alias} is already disconnected` : `${alias} is not in herdr or the app`);
+  if (!(await confirm(ctx, `Disconnect ${alias}? Its terminals keep running there; its spaces leave the app until you connect again.`, true))) {
+    return { code: 1, text: "Nothing changed." };
+  }
+  const report = emptyReport();
+  const steps: Step[] = [];
+  const tui = row.tui;
+  if (tui?.enabled && state.herdr.available) {
+    const herdr = new Herdr(ctx.bins);
+    steps.push({ side: "tui", title: `herdr machine disable ${alias}`, run: () => herdr.disable(tui.id), undo: () => herdr.enable(tui.id) });
+  } else skip(report, "tui", tui ? "already disconnected" : "not there");
+  const app = row.app;
+  if (app && state.hc.available) {
+    const hc = new Hc(ctx.bins);
+    steps.push({
+      side: "app",
+      title: `hc machine rm ${app.name} (kept for connect)`,
+      run: () => {
+        rememberDisconnected(ctx.p, row.alias, { name: app.name, session: app.session ?? null });
+        const rm = hc.rm(app.name);
+        if (!rm.ok) forgetDisconnected(ctx.p, row.alias);
+        return rm;
+      },
+    });
+  } else skip(report, "app", row.appOff ? "already disconnected" : "not there");
+  skip(report, "ssh", "unchanged");
+  await runSteps(ctx, steps, report);
+  return result(report, { alias });
+}
+
+/** Undoes disconnect: herdr enables the profile, and the app adds the machine back with its name and session. */
+export async function connect(ctx: Ctx, alias: string): Promise<CommandResult> {
+  const state = loadState(ctx.p, ctx.bins);
+  const row = findRow(state, alias);
+  if (!canConnect(row)) throw new UsageError(canDisconnect(row) ? `${alias} is already connected` : `${alias} is not in herdr or the app`);
+  const report = emptyReport();
+  const steps: Step[] = [];
+  const tui = row.tui;
+  if (tui && !tui.enabled && state.herdr.available) {
+    const herdr = new Herdr(ctx.bins);
+    steps.push({ side: "tui", title: `herdr machine enable ${alias}`, run: () => herdr.enable(tui.id), undo: () => herdr.disable(tui.id) });
+  } else skip(report, "tui", tui ? "already connected" : "not there");
+  const off = row.appOff;
+  if (off && state.hc.available) {
+    const hc = new Hc(ctx.bins);
+    steps.push({
+      side: "app",
+      title: `hc machine add ${alias} --name ${off.name}`,
+      run: () => {
+        const add = hc.add(alias, off.name, off.session, ctx.interactive);
+        if (add.ok) forgetDisconnected(ctx.p, alias);
+        return add;
+      },
+    });
+  } else if (off && !state.hc.available) skip(report, "app", state.hc.reason);
+  else skip(report, "app", row.app ? "already connected" : "not there");
+  skip(report, "ssh", "unchanged");
+  await runSteps(ctx, steps, report);
+  return result(report, { alias });
+}
+
+// ---------------------------------------------------------------------------
 // login
 
 /**
@@ -598,14 +683,14 @@ export async function doctor(ctx: Ctx, opts: { fix?: boolean }): Promise<Command
 export async function login(ctx: Ctx, alias: string): Promise<CommandResult> {
   const state = loadState(ctx.p, ctx.bins);
   const row = findRow(state, alias);
-  if (!row.tui && !row.app) throw new UsageError(`${alias} is not in herdr or the app`);
+  if (!canDisconnect(row)) throw new UsageError(canConnect(row) ? `${alias} is disconnected; connect it first` : `${alias} is not in herdr or the app`);
   if (!ctx.interactive) throw new NeedsTerminal(`logging in to ${alias} asks for a password or code`);
   const report = emptyReport();
   const steps: Step[] = [];
-  if (row.tui && state.herdr.available) {
+  if (row.tui?.enabled && state.herdr.available) {
     const id = row.tui.id;
     steps.push({ side: "tui", title: `herdr machine reconnect ${alias}`, run: () => new Herdr(ctx.bins).reconnect(id) });
-  } else skip(report, "tui", "not there");
+  } else skip(report, "tui", row.tui ? "disconnected" : "not there");
   if (row.app && state.hc.available) {
     const name = row.app.name;
     steps.push({ side: "app", title: `hc machine login ${name}`, run: () => new Hc(ctx.bins).login(name) });
