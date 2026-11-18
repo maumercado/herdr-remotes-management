@@ -204,10 +204,15 @@ test("delete asks about the SSH entry and runs quietly with flags; exit 3 falls 
   const view = new mod.default();
   view.init({}, cx);
   await settle();
-  view.remove(view.machines[0], cx);
-  view.confirm.yes();
+  // A cx lives for one host call: the Delete click's cx is stale once Yes is clicked.
+  const click = { ...cx };
+  view.remove(view.machines[0], click);
+  click.notify = click.spawn = () => {
+    throw new Error("stale context");
+  };
+  view.confirm.yes(cx);
   assert.match(view.confirm.title, /SSH entry/);
-  view.confirm.no();
+  view.confirm.no(cx);
   await settle();
   assert.deepEqual(hm.execCalls.find((c) => c[1] === "delete"), ["/repo/bin/herdr-machines", "delete", "box1", "--yes", "--ssh=keep"]);
   assert.match(view.message, /ssh ✓/);

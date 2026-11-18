@@ -264,11 +264,13 @@ export default class Machines extends View {
     }
     if (renameKind === "label") return this.quick(["rename", alias, "--label", next], cx);
     if (renameKind === "hc-name") {
-      return this.ask(`Rename the app machine to ${next}?`, "App addresses that use the old name (like old/t7) stop working.", () => this.quick(["rename", alias, "--hc-name", next, "--yes"], cx), null, cx);
+      return this.ask(`Rename the app machine to ${next}?`, "App addresses that use the old name (like old/t7) stop working.", (cx) => this.quick(["rename", alias, "--hc-name", next, "--yes"], cx), null, cx);
     }
     this.ask(`Change the alias ${alias} to ${next}?`, "herdr and the app remove and add the machine again with the same session. Setup prompts may appear in a terminal.", () => this.inTerminal(["rename", alias, "--alias", next, "--yes"]), null, cx);
   }
 
+  // yes and no get the cx of the click or key that answers: a cx kept from
+  // the call that asked is stale by then.
   ask(title, detail, yes, no, cx) {
     this.confirm = { title, detail, yes, no };
     this.mode = "confirm";
@@ -281,13 +283,13 @@ export default class Machines extends View {
     this.ask(
       `Remove ${row.alias} from herdr and the app?`,
       "Sessions and terminals on the remote keep running.",
-      () => {
+      (cx) => {
         if (!managed) return this.quick(["delete", row.alias, "--yes"], cx);
         this.ask(
           `Also delete the SSH entry for ${row.alias}?`,
           "Yes deletes it from the managed file. No keeps it in ~/.ssh.",
-          () => this.quick(["delete", row.alias, "--yes", "--ssh=delete"], cx),
-          () => this.quick(["delete", row.alias, "--yes", "--ssh=keep"], cx),
+          (cx) => this.quick(["delete", row.alias, "--yes", "--ssh=delete"], cx),
+          (cx) => this.quick(["delete", row.alias, "--yes", "--ssh=keep"], cx),
           cx,
         );
       },
@@ -312,12 +314,12 @@ export default class Machines extends View {
       return;
     }
     if (this.mode === "confirm" && (e.key === "enter" || e.key === "y")) {
-      this.confirm.yes();
+      this.confirm.yes(cx);
       cx.stop_propagation();
       return;
     }
     if (this.mode === "confirm" && e.key === "n") {
-      if (this.confirm.no) this.confirm.no();
+      if (this.confirm.no) this.confirm.no(cx);
       else this.back(cx);
       cx.stop_propagation();
       return;
@@ -495,8 +497,8 @@ export default class Machines extends View {
           .gap(8)
           .justify_end()
           .child(this.button(t, "hm-cancel", "Cancel", (cx) => this.back(cx)))
-          .when(Boolean(c.no), (el) => el.child(this.button(t, "hm-no", "No", () => c.no())))
-          .child(this.button(t, "hm-yes", "Yes", () => c.yes(), true)),
+          .when(Boolean(c.no), (el) => el.child(this.button(t, "hm-no", "No", (cx) => c.no(cx))))
+          .child(this.button(t, "hm-yes", "Yes", (cx) => c.yes(cx), true)),
       );
   }
 
